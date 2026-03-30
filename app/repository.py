@@ -1,119 +1,93 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
-from typing import Iterator
 
+from sqlalchemy import select
+
+from app.cache import CacheStore
+from app.db import Database, WorkflowRunRecord
 from app.models import ReviewDecision, WorkflowLog, WorkflowPlan, WorkflowRun
 
 
 class WorkflowRepository:
-    def __init__(self, database_path: str) -> None:
-        self.database_path = Path(database_path).resolve()
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
-
-    @contextmanager
-    def _connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.database_path)
-        connection.row_factory = sqlite3.Row
-        try:
-            yield connection
-            connection.commit()
-        finally:
-            connection.close()
-
-    def _initialize(self) -> None:
-        with self._connection() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workflow_runs (
-                    id TEXT PRIMARY KEY,
-                    workflow_type TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    current_step TEXT NOT NULL,
-                    objective TEXT NOT NULL,
-                    input_payload TEXT NOT NULL,
-                    plan_json TEXT,
-                    result_json TEXT NOT NULL,
-                    review_json TEXT,
-                    logs_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
+    def __init__(self, database: Database, cache: CacheStore | None = None) -> None:
+        self.database = database
+        self.cache = cache
+        self.database.initialize()
 
     def save(self, run: WorkflowRun) -> WorkflowRun:
-        with self._connection() as connection:
-            connection.execute(
-                """
-                INSERT INTO workflow_runs (
-                    id, workflow_type, status, current_step, objective,
-                    input_payload, plan_json, result_json, review_json,
-                    logs_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    workflow_type=excluded.workflow_type,
-                    status=excluded.status,
-                    current_step=excluded.current_step,
-                    objective=excluded.objective,
-                    input_payload=excluded.input_payload,
-                    plan_json=excluded.plan_json,
-                    result_json=excluded.result_json,
-                    review_json=excluded.review_json,
-                    logs_json=excluded.logs_json,
-                    created_at=excluded.created_at,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    run.id,
-                    run.workflow_type.value,
-                    run.status.value,
-                    run.current_step,
-                    run.objective,
-                    json.dumps(run.input_payload, ensure_ascii=False),
-                    json.dumps(run.plan.model_dump(mode="json"), ensure_ascii=False) if run.plan else None,
-                    json.dumps(run.result, ensure_ascii=False),
-                    json.dumps(run.review.model_dump(mode="json"), ensure_ascii=False) if run.review else None,
-                    json.dumps([log.model_dump(mode="json") for log in run.logs], ensure_ascii=False),
-                    run.created_at.isoformat(),
-                    run.updated_at.isoformat(),
-                ),
-            )
+        with self.database.session() as session:
+            record = session.get(WorkflowRunRecord, run.id)
+            if record is None:
+                record = WorkflowRunRecord(id=run.id)
+                session.add(record)
+            record.workflow_type = run.workflow_type.value
+            record.status = run.status.value
+            record.current_step = run.current_step
+            record.objective = run.objective
+            record.input_payload = json.dumps(run.input_payload, ensure_ascii=False)
+            record.plan_json = json.dumps(run.plan.model_dump(mode="json"), ensure_ascii=False) if run.plan else None
+            record.result_json = json.dumps(run.result, ensure_ascii=False)
+            record.review_json = json.dumps(run.review.model_dump(mode="json"), ensure_ascii=False) if run.review else None
+            record.logs_json = json.dumps([log.model_dump(mode="json") for log in run.logs], ensure_ascii=False)
+            record.created_at = run.created_at
+            record.updated_at = run.updated_at
+        self._cache_run(run)
         return run
 
     def get(self, run_id: str) -> WorkflowRun | None:
-        with self._connection() as connection:
-            row = connection.execute("SELECT * FROM workflow_runs WHERE id = ?", (run_id,)).fetchone()
-        return self._deserialize(row) if row else None
+        cached = self._get_cached_run(run_id)
+        if cached is not None:
+            return cached
+        with self.database.session() as session:
+            record = session.get(WorkflowRunRecord, run_id)
+            if record is None:
+                return None
+            run = self._deserialize(record)
+        self._cache_run(run)
+        return run
 
     def list_all(self) -> list[WorkflowRun]:
-        with self._connection() as connection:
-            rows = connection.execute(
-                "SELECT * FROM workflow_runs ORDER BY datetime(created_at) DESC"
-            ).fetchall()
-        return [self._deserialize(row) for row in rows]
+        with self.database.session() as session:
+            records = session.scalars(
+                select(WorkflowRunRecord).order_by(WorkflowRunRecord.created_at.desc())
+            ).all()
+        return [self._deserialize(record) for record in records]
+
+    def _cache_run(self, run: WorkflowRun) -> None:
+        if not self.cache:
+            return
+        self.cache.set_json(f"workflow_run:{run.id}", run.model_dump(mode="json"))
+
+    def _get_cached_run(self, run_id: str) -> WorkflowRun | None:
+        if not self.cache:
+            return None
+        payload = self.cache.get_json(f"workflow_run:{run_id}")
+        return WorkflowRun(**payload) if payload else None
 
     @staticmethod
-    def _deserialize(row: sqlite3.Row) -> WorkflowRun:
-        plan_json = json.loads(row["plan_json"]) if row["plan_json"] else None
-        review_json = json.loads(row["review_json"]) if row["review_json"] else None
-        logs_json = json.loads(row["logs_json"]) if row["logs_json"] else []
+    def _deserialize(record: WorkflowRunRecord) -> WorkflowRun:
+        plan_json = json.loads(record.plan_json) if record.plan_json else None
+        review_json = json.loads(record.review_json) if record.review_json else None
+        logs_json = json.loads(record.logs_json) if record.logs_json else []
         return WorkflowRun(
-            id=row["id"],
-            workflow_type=row["workflow_type"],
-            status=row["status"],
-            current_step=row["current_step"],
-            objective=row["objective"],
-            input_payload=json.loads(row["input_payload"]),
+            id=record.id,
+            workflow_type=record.workflow_type,
+            status=record.status,
+            current_step=record.current_step,
+            objective=record.objective,
+            input_payload=json.loads(record.input_payload),
             plan=WorkflowPlan(**plan_json) if plan_json else None,
-            result=json.loads(row["result_json"]),
+            result=json.loads(record.result_json),
             review=ReviewDecision(**review_json) if review_json else None,
             logs=[WorkflowLog(**item) for item in logs_json],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=WorkflowRepository._as_datetime(record.created_at),
+            updated_at=WorkflowRepository._as_datetime(record.updated_at),
         )
+
+    @staticmethod
+    def _as_datetime(value: datetime | str) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(value)

@@ -2,46 +2,66 @@
 
 `FlowPilot` 是一个偏执行型的企业 AI 工作流自动化项目，用来补足“企业级 RAG 知识库搜索”之外的能力面。它不以检索为中心，而以任务拆解、多 Agent 协作、工具调用、人工接管和流程可观测为核心。
 
-## 覆盖能力
+## 当前能力
 
 - `Planner / Operator / Analyst / Content / Reviewer` 五类 Agent 协作
 - 销售分析与跟进计划
-- 营销内容生成与 A/B 版本建议
-- 客服工单智能分流与升级建议
-- 会议纪要转行动项与会后邮件
-- 工作流状态机、执行日志、人工接管判断
+- 营销内容工厂
+- 客服工单智能分流
+- 会议纪要转执行系统
+- 真实模型接入：默认 `qwen3-max`
+- 真实数据库兼容：`SQLite / MySQL`
+- 缓存兼容：`Redis`
 
 ## 技术栈
 
 - `Python 3.11`
 - `FastAPI`
-- `Jinja2`
-- `SQLite`
+- `SQLAlchemy`
+- `SQLite / MySQL`
+- `Redis`
 - `OpenAI Python SDK`
 - DashScope OpenAI 兼容接口
 
-## 模型与数据库
+## 环境变量
 
-- 默认模型：`qwen3-max`
-- 默认端点：`https://dashscope.aliyuncs.com/compatible-mode/v1`
-- 默认数据库：本地 `flowpilot.db`
-- 环境变量样例见 [.env.example](./.env.example)
+样例见 [.env.example](./.env.example)。
 
-模型环境变量优先级：
+关键变量：
 
-1. `DASHSCOPE_API_KEY`
-2. `OPENAI_API_KEY`
-3. `OPEN_AI_KEY`
+- `DASHSCOPE_API_KEY`
+- `OPENAI_API_KEY`
+- `MODEL_NAME`
+- `MODEL_BASE_URL`
+- `DATABASE_URL`
+- `REDIS_URL`
 
-如果模型调用不可用，系统会自动回退到本地规则逻辑，保证工作流仍能执行。
+默认模型端点：
 
-## 快速启动
+- `https://dashscope.aliyuncs.com/compatible-mode/v1`
+
+## 本地启动
 
 ```bash
 python -m uvicorn app.main:app --reload
 ```
 
 启动后打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
+
+## 启动 MySQL 和 Redis
+
+如果你想切到更接近正式环境的方式，可以先启动基础设施：
+
+```bash
+docker compose -f docker-compose.infra.yml up -d
+```
+
+然后把环境变量切到：
+
+```env
+DATABASE_URL=mysql+pymysql://flowpilot:flowpilot@127.0.0.1:3306/flowpilot
+REDIS_URL=redis://127.0.0.1:6379/0
+```
 
 ## 测试
 
@@ -51,6 +71,7 @@ python -m pytest -q
 
 ## API
 
+- `GET /`
 - `GET /api/health`
 - `GET /api/workflows/templates`
 - `GET /api/workflows`
@@ -59,15 +80,13 @@ python -m pytest -q
 
 ## 项目说明
 
-这个版本是一个可运行 MVP，重点展示工程思路与产品包装方式：
+当前版本重点展示三件事：
 
-- 用工作流模板覆盖多个企业场景，避免和现有 RAG 项目重复
-- 用状态机和 Agent 日志表现执行链路
-- 用 Reviewer Agent 做人工接管判断，模拟企业级可控性
-- 用 SQLite 持久化每次运行记录
-- 用真实模型增强 Analyst / Content / Reviewer 三类 Agent
-- 用结构化输出方便继续接数据库、消息队列或内部系统
+- 多工作流、多 Agent 的执行编排
+- 真实模型增强业务分析与审核
+- MySQL + Redis 兼容的工程化持久化方案
 
-## 详细设计文档
+## 文档
 
-完整设计思路见 [docs/多Agent工作-项目设计.md](./docs/多Agent工作-项目设计.md)。
+- 总体设计：[docs/多Agent工作-项目设计.md](./docs/多Agent工作-项目设计.md)
+- 第一步升级说明：[docs/第1步-MySQL与Redis升级.md](./docs/第1步-MySQL与Redis升级.md)

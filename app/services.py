@@ -324,7 +324,7 @@ class ReviewerAgent:
             "allowed_status": ["completed", "waiting_human"],
             "required_keys": ["status", "needs_human_review", "score", "reasons"],
         }
-        review_payload = self.llm.generate_json(
+        llm_payload = self.llm.generate_json(
             system_prompt=(
                 "你是企业工作流平台中的 Reviewer Agent。"
                 "请输出纯 JSON。status 只能是 completed 或 waiting_human，"
@@ -333,7 +333,7 @@ class ReviewerAgent:
             user_prompt=json.dumps(prompt, ensure_ascii=False),
             fallback=fallback,
         )
-        return ReviewDecision(**review_payload)
+        return ReviewDecision(**self._merge_review(fallback, llm_payload))
 
     @staticmethod
     def _fallback_review(workflow_type: WorkflowType, raw_result: dict[str, Any]) -> dict[str, Any]:
@@ -366,6 +366,30 @@ class ReviewerAgent:
             "needs_human_review": needs_human_review,
             "score": score,
             "reasons": reasons,
+        }
+
+    @staticmethod
+    def _merge_review(rule_payload: dict[str, Any], llm_payload: dict[str, Any]) -> dict[str, Any]:
+        merged_reasons = []
+        for reason in [*(rule_payload.get("reasons") or []), *(llm_payload.get("reasons") or [])]:
+            if reason and reason not in merged_reasons:
+                merged_reasons.append(reason)
+
+        # Hard safety gates always win. The model can make the review stricter, but not looser.
+        if rule_payload.get("needs_human_review"):
+            return {
+                "status": RunStatus.WAITING_HUMAN.value,
+                "needs_human_review": True,
+                "score": min(float(rule_payload.get("score", 1.0)), float(llm_payload.get("score", 1.0))),
+                "reasons": merged_reasons,
+            }
+
+        llm_requests_handoff = bool(llm_payload.get("needs_human_review")) or llm_payload.get("status") == RunStatus.WAITING_HUMAN.value
+        return {
+            "status": RunStatus.WAITING_HUMAN.value if llm_requests_handoff else RunStatus.COMPLETED.value,
+            "needs_human_review": llm_requests_handoff,
+            "score": float(llm_payload.get("score", rule_payload.get("score", 0.9))),
+            "reasons": merged_reasons or rule_payload.get("reasons", []),
         }
 
 

@@ -6,6 +6,15 @@ from app.main import app
 client = TestClient(app)
 
 
+def test_health_endpoint_exposes_backend_shape() -> None:
+    response = client.get("/api/health")
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "ok"
+    assert body["database_backend"] in {"sqlite", "mysql", "custom"}
+    assert "redis_enabled" in body
+
+
 def test_templates_available() -> None:
     response = client.get("/api/workflows/templates")
     assert response.status_code == 200
