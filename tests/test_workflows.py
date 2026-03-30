@@ -6,6 +6,13 @@ from app.main import app
 client = TestClient(app)
 
 
+def test_index_renders_console_shell() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "FlowPilot Console" in response.text
+    assert "/api/workflows/review-queue" in response.text
+
+
 def test_health_endpoint_exposes_backend_shape() -> None:
     response = client.get("/api/health")
     body = response.json()
@@ -49,7 +56,7 @@ def test_sales_workflow_runs() -> None:
     assert any("LangGraph 状态流" in log["message"] for log in body["logs"])
 
 
-def test_support_workflow_flags_human_review() -> None:
+def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
     response = client.post(
         "/api/workflows/run",
         json={
@@ -69,6 +76,16 @@ def test_support_workflow_flags_human_review() -> None:
     assert body["review"]["needs_human_review"] is True
     assert body["status"] == "waiting_human"
     assert any("人工接管" in log["message"] for log in body["logs"])
+
+    queue = client.get("/api/workflows/review-queue").json()
+    assert any(item["id"] == body["id"] for item in queue)
+
+    approved = client.post(
+        f"/api/workflows/{body['id']}/review",
+        json={"approve": True, "comment": "值班工程师已确认处理方案"},
+    ).json()
+    assert approved["status"] == "completed"
+    assert any("人工审核通过" in log["message"] for log in approved["logs"])
 
 
 def test_meeting_workflow_extracts_actions() -> None:

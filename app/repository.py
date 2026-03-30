@@ -55,6 +55,15 @@ class WorkflowRepository:
             ).all()
         return [self._deserialize(record) for record in records]
 
+    def list_waiting_human(self) -> list[WorkflowRun]:
+        with self.database.session() as session:
+            records = session.scalars(
+                select(WorkflowRunRecord)
+                .where(WorkflowRunRecord.status == "waiting_human")
+                .order_by(WorkflowRunRecord.updated_at.desc())
+            ).all()
+        return [self._deserialize(record) for record in records]
+
     def _cache_run(self, run: WorkflowRun) -> None:
         if not self.cache:
             return

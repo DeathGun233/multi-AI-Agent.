@@ -55,6 +55,11 @@ class WorkflowRequest(BaseModel):
     input_payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class ReviewSubmission(BaseModel):
+    approve: bool
+    comment: str = ""
+
+
 class WorkflowPlan(BaseModel):
     workflow_type: WorkflowType
     objective: str

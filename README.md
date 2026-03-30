@@ -91,3 +91,4 @@ python -m pytest -q
 - 总体设计：[docs/多Agent工作-项目设计.md](./docs/多Agent工作-项目设计.md)
 - 第一步升级说明：[docs/第1步-MySQL与Redis升级.md](./docs/第1步-MySQL与Redis升级.md)
 - 第二步升级说明：[docs/第2步-LangGraph状态流升级.md](./docs/第2步-LangGraph状态流升级.md)
+- 第三步升级说明：[docs/第3步-前端工作台升级.md](./docs/第3步-前端工作台升级.md)

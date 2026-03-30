@@ -422,11 +422,40 @@ class WorkflowEngine:
     def list_runs(self) -> list[WorkflowRun]:
         return self.repository.list_all()
 
+    def list_review_queue(self) -> list[WorkflowRun]:
+        return self.repository.list_waiting_human()
+
     def get_run(self, run_id: str) -> WorkflowRun | None:
         return self.repository.get(run_id)
 
     def get_graph_definition(self) -> dict[str, Any]:
         return self.graph_definition
+
+    def submit_review(self, run_id: str, approve: bool, comment: str = "") -> WorkflowRun | None:
+        run = self.repository.get(run_id)
+        if run is None:
+            return None
+        if run.status != RunStatus.WAITING_HUMAN:
+            return run
+        run.touch(
+            status=RunStatus.COMPLETED if approve else RunStatus.FAILED,
+            current_step="human_review",
+        )
+        run.add_log(
+            "HumanReviewer",
+            ("人工审核通过。" if approve else "人工审核驳回。") + (f" 备注：{comment}" if comment else ""),
+        )
+        if run.review is not None:
+            reasons = list(run.review.reasons)
+            reasons.append(("人工审核通过" if approve else "人工审核驳回") + (f"：{comment}" if comment else ""))
+            run.review = ReviewDecision(
+                status=RunStatus.COMPLETED if approve else RunStatus.FAILED,
+                needs_human_review=False,
+                score=run.review.score,
+                reasons=reasons,
+            )
+        self.repository.save(run)
+        return run
 
     def run_workflow(self, request: WorkflowRequest) -> WorkflowRun:
         run = WorkflowRun(workflow_type=request.workflow_type, input_payload=request.input_payload)

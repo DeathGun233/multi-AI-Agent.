@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from app.cache import CacheStore
 from app.config import Settings
 from app.db import Database
-from app.models import WorkflowRequest
+from app.models import ReviewSubmission, WorkflowRequest
 from app.repository import WorkflowRepository
 from app.services import WorkflowEngine
 
@@ -60,6 +60,11 @@ def list_runs() -> list[dict]:
     return [run.model_dump(mode="json") for run in engine.list_runs()]
 
 
+@app.get("/api/workflows/review-queue")
+def get_review_queue() -> list[dict]:
+    return [run.model_dump(mode="json") for run in engine.list_review_queue()]
+
+
 @app.get("/api/workflows/graph")
 def get_workflow_graph() -> dict:
     return engine.get_graph_definition()
@@ -76,4 +81,12 @@ def get_run(run_id: str) -> dict:
 @app.post("/api/workflows/run")
 def run_workflow(request: WorkflowRequest) -> dict:
     run = engine.run_workflow(request)
+    return run.model_dump(mode="json")
+
+
+@app.post("/api/workflows/{run_id}/review")
+def submit_review(run_id: str, submission: ReviewSubmission) -> dict:
+    run = engine.submit_review(run_id, submission.approve, submission.comment)
+    if run is None:
+        raise HTTPException(status_code=404, detail="workflow run not found")
     return run.model_dump(mode="json")
