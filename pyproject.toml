@@ -1,0 +1,14 @@
+[project]
+name = "flowpilot"
+version = "0.1.0"
+description = "Enterprise workflow automation MVP powered by multi-agent orchestration."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.1",
+  "openai>=1.109.1",
+  "uvicorn[standard]>=0.35.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

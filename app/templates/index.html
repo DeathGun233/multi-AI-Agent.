@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlowPilot</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: #fffdf9;
+      --ink: #1f1f1f;
+      --muted: #5f5a54;
+      --accent: #0b6e4f;
+      --accent-2: #c96d26;
+      --line: #e5dccf;
+      --soft: #f7f1e9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(201,109,38,0.15), transparent 28%),
+        radial-gradient(circle at top right, rgba(11,110,79,0.18), transparent 24%),
+        linear-gradient(180deg, #f9f5ef 0%, var(--bg) 100%);
+      min-height: 100vh;
+    }
+    .shell {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero, .card {
+      background: rgba(255,253,249,0.92);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: 0 16px 40px rgba(26, 26, 26, 0.07);
+      backdrop-filter: blur(12px);
+    }
+    .hero {
+      padding: 24px 28px;
+      display: grid;
+      gap: 14px;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 56px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 820px;
+      line-height: 1.65;
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .badge {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 18px;
+    }
+    .card { padding: 20px; }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+    .template {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fffaf3;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+    .template:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-2);
+    }
+    .template strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    select, textarea, button {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font: inherit;
+    }
+    select, button { padding: 12px 14px; }
+    textarea {
+      min-height: 280px;
+      padding: 14px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+    button {
+      background: linear-gradient(135deg, var(--accent) 0%, #0e8a64 100%);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      border: 0;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.55;
+      background: #1e1e1e;
+      color: #eaeaea;
+      padding: 16px;
+      border-radius: 16px;
+      min-height: 540px;
+      overflow: auto;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+      textarea { min-height: 220px; }
+      pre { min-height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>FlowPilot</h1>
+      <p>
+        一个偏执行而非检索的企业级 AI 工作流平台 Demo。它聚焦任务拆解、多 Agent 协作、工具调用、
+        人工接管和流程可观测，适合作为你现有 RAG 项目的互补型作品。
+      </p>
+      <div class="badge-row">
+        <span class="badge">Planner / Operator / Analyst / Content / Reviewer</span>
+        <span class="badge">Sales / Marketing / Support / Meeting</span>
+        <span class="badge">FastAPI + Python</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card stack">
+        <div>
+          <h2>工作流模板</h2>
+          <div id="templateList" class="stack"></div>
+        </div>
+      </div>
+
+      <div class="card stack">
+        <div>
+          <h2>运行工作流</h2>
+          <label for="workflowType">工作流类型</label>
+          <select id="workflowType"></select>
+        </div>
+        <div>
+          <label for="payload">输入 JSON</label>
+          <textarea id="payload"></textarea>
+          <p class="hint">可以直接点左侧模板加载，也可以手动改 JSON 再运行。</p>
+        </div>
+        <button id="runButton">执行工作流</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>执行结果</h2>
+      <pre id="result">等待运行...</pre>
+    </section>
+  </main>
+
+  <script>
+    const templates = {{ templates|tojson }};
+    const templateList = document.getElementById("templateList");
+    const workflowType = document.getElementById("workflowType");
+    const payload = document.getElementById("payload");
+    const result = document.getElementById("result");
+    const runButton = document.getElementById("runButton");
+
+    function loadTemplate(template) {
+      workflowType.value = template.workflow_type;
+      payload.value = JSON.stringify(template.sample_payload, null, 2);
+    }
+
+    templates.forEach((template) => {
+      const option = document.createElement("option");
+      option.value = template.workflow_type;
+      option.textContent = template.title;
+      workflowType.appendChild(option);
+
+      const card = document.createElement("button");
+      card.className = "template";
+      card.type = "button";
+      card.innerHTML = `<strong>${template.title}</strong><span>${template.description}</span>`;
+      card.addEventListener("click", () => loadTemplate(template));
+      templateList.appendChild(card);
+    });
+
+    loadTemplate(templates[0]);
+
+    runButton.addEventListener("click", async () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(payload.value);
+      } catch (error) {
+        result.textContent = `JSON 解析失败: ${error.message}`;
+        return;
+      }
+
+      result.textContent = "执行中...";
+      const response = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          workflow_type: workflowType.value,
+          input_payload: parsed,
+        }),
+      });
+      const body = await response.json();
+      result.textContent = JSON.stringify(body, null, 2);
+    });
+  </script>
+</body>
+</html>
