@@ -15,6 +15,7 @@
 - 多页面工作台：仪表盘、运行历史、审核中心、详情页
 - 图形化执行时间线
 - 登录态与角色权限：`viewer / operator / reviewer / admin`
+- 数据库用户表与密码哈希认证
 
 ## 技术栈
 
@@ -42,6 +43,11 @@
 - `FLOWPILOT_SESSION_COOKIE`
 - `FLOWPILOT_USERS_JSON`
 
+其中：
+
+- `FLOWPILOT_USERS_JSON` 用于初始化数据库用户，不再作为运行时内存账号源
+- 用户密码会以 `PBKDF2-SHA256` 哈希形式写入数据库
+
 默认模型端点：
 
 - `https://dashscope.aliyuncs.com/compatible-mode/v1`
@@ -60,6 +66,8 @@ python -m uvicorn app.main:app --reload
 - `reviewer / reviewer123`
 - `operator / operator123`
 - `viewer / viewer123`
+
+首次启动时，这些账号会自动初始化到 `user_accounts` 表。
 
 ## 启动 MySQL 和 Redis
 
@@ -112,6 +120,7 @@ python -m pytest -q
 - 工作台从单页升级为多页面后台，补上运行历史、审核中心和详情页
 - 基于角色的登录态与审核权限控制
 - 任务详情页提供图形化执行时间线，方便演示执行轨迹
+- 用户体系已升级为数据库账号表，默认账号仅用于初始化种子数据
 
 ## 文档
 
@@ -120,3 +129,4 @@ python -m pytest -q
 - 第二步升级说明：[docs/第2步-LangGraph状态流升级.md](./docs/第2步-LangGraph状态流升级.md)
 - 第三步升级说明：[docs/第3步-前端工作台升级.md](./docs/第3步-前端工作台升级.md)
 - 第四步升级说明：[docs/第4步-多页面与权限升级.md](./docs/第4步-多页面与权限升级.md)
+- 第五步升级说明：[docs/第5步-数据库认证升级.md](./docs/第5步-数据库认证升级.md)

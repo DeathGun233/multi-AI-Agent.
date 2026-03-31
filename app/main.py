@@ -29,10 +29,10 @@ settings = Settings.from_env()
 database = Database(settings.database_url)
 cache = CacheStore(settings.redis_url)
 
-app = FastAPI(title="FlowPilot", version="0.2.0")
+app = FastAPI(title="FlowPilot", version="0.3.0")
 repository = WorkflowRepository(database, cache)
 engine = WorkflowEngine(repository, settings)
-auth_service = AuthService(settings)
+auth_service = AuthService(settings, database)
 
 
 def _safe_next_path(next_path: str | None) -> str:

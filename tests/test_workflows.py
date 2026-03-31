@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.db import UserAccountRecord
+from app.main import app, database
 
 
 client = TestClient(app)
@@ -17,6 +18,15 @@ def login_as(username: str, password: str) -> None:
         follow_redirects=False,
     )
     assert response.status_code == 303
+
+
+def test_seeded_users_are_persisted_with_password_hash() -> None:
+    with database.session() as session:
+        record = session.get(UserAccountRecord, "admin")
+        assert record is not None
+        assert record.display_name == "系统管理员"
+        assert record.password_hash.startswith("pbkdf2_sha256$")
+        assert record.password_hash != "admin123"
 
 
 def test_root_redirects_to_login() -> None:

@@ -4,18 +4,24 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException, Request, status
+from sqlalchemy import select
 
 from app.config import Settings
+from app.db import Database, UserAccountRecord
 
 
 ROLE_VIEWER = "viewer"
 ROLE_OPERATOR = "operator"
 ROLE_REVIEWER = "reviewer"
 ROLE_ADMIN = "admin"
+
+PBKDF2_PREFIX = "pbkdf2_sha256"
+PBKDF2_ROUNDS = 120_000
 
 
 @dataclass(frozen=True)
@@ -34,7 +40,7 @@ class RoleCapabilities:
 
 
 @dataclass(frozen=True)
-class UserRecord:
+class UserSeed:
     username: str
     password: str
     display_name: str
@@ -42,24 +48,43 @@ class UserRecord:
 
 
 class AuthService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, database: Database) -> None:
         self.settings = settings
-        self._users = {
-            user.username: user
-            for user in self._load_users(settings.users_json)
-        }
+        self.database = database
+        self.database.initialize()
+        self.ensure_seeded_users()
+
+    def ensure_seeded_users(self) -> None:
+        seeds = self._load_seed_users(self.settings.users_json)
+        with self.database.session() as session:
+            existing = {
+                record.username: record
+                for record in session.scalars(select(UserAccountRecord)).all()
+            }
+            for seed in seeds:
+                if seed.username in existing:
+                    continue
+                session.add(
+                    UserAccountRecord(
+                        username=seed.username,
+                        password_hash=self.hash_password(seed.password),
+                        display_name=seed.display_name,
+                        role=seed.role,
+                        is_active=True,
+                    )
+                )
 
     def authenticate(self, username: str, password: str) -> AuthUser | None:
-        record = self._users.get(username.strip())
-        if record is None or record.password != password:
+        record = self._get_user_record(username.strip())
+        if record is None or not record.is_active:
+            return None
+        if not self.verify_password(password, record.password_hash):
             return None
         return AuthUser(username=record.username, display_name=record.display_name, role=record.role)
 
     def build_session_cookie(self, user: AuthUser) -> str:
         payload = {
             "username": user.username,
-            "display_name": user.display_name,
-            "role": user.role,
         }
         encoded = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
         signature = hmac.new(
@@ -85,8 +110,8 @@ class AuthService:
         except (ValueError, json.JSONDecodeError):
             return None
         username = payload.get("username")
-        record = self._users.get(username)
-        if record is None:
+        record = self._get_user_record(username)
+        if record is None or not record.is_active:
             return None
         return AuthUser(username=record.username, display_name=record.display_name, role=record.role)
 
@@ -117,11 +142,35 @@ class AuthService:
         )
 
     @staticmethod
-    def _load_users(raw_users: str | None) -> list[UserRecord]:
+    def hash_password(password: str, rounds: int = PBKDF2_ROUNDS) -> str:
+        salt = secrets.token_hex(16)
+        derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), rounds)
+        return f"{PBKDF2_PREFIX}${rounds}${salt}${derived.hex()}"
+
+    @staticmethod
+    def verify_password(password: str, stored_password: str) -> bool:
+        if stored_password.startswith(f"{PBKDF2_PREFIX}$"):
+            try:
+                _, rounds_text, salt, stored_digest = stored_password.split("$", 3)
+                rounds = int(rounds_text)
+            except ValueError:
+                return False
+            candidate = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), rounds).hex()
+            return hmac.compare_digest(candidate, stored_digest)
+        return hmac.compare_digest(password, stored_password)
+
+    def _get_user_record(self, username: str | None) -> UserAccountRecord | None:
+        if not username:
+            return None
+        with self.database.session() as session:
+            return session.get(UserAccountRecord, username)
+
+    @staticmethod
+    def _load_seed_users(raw_users: str | None) -> list[UserSeed]:
         if raw_users:
             payload = json.loads(raw_users)
             return [
-                UserRecord(
+                UserSeed(
                     username=item["username"],
                     password=item["password"],
                     display_name=item.get("display_name", item["username"]),
@@ -130,8 +179,8 @@ class AuthService:
                 for item in payload
             ]
         return [
-            UserRecord(username="admin", password="admin123", display_name="系统管理员", role=ROLE_ADMIN),
-            UserRecord(username="reviewer", password="reviewer123", display_name="审核负责人", role=ROLE_REVIEWER),
-            UserRecord(username="operator", password="operator123", display_name="流程运营", role=ROLE_OPERATOR),
-            UserRecord(username="viewer", password="viewer123", display_name="只读观察员", role=ROLE_VIEWER),
+            UserSeed(username="admin", password="admin123", display_name="系统管理员", role=ROLE_ADMIN),
+            UserSeed(username="reviewer", password="reviewer123", display_name="审核负责人", role=ROLE_REVIEWER),
+            UserSeed(username="operator", password="operator123", display_name="流程运营", role=ROLE_OPERATOR),
+            UserSeed(username="viewer", password="viewer123", display_name="只读观察员", role=ROLE_VIEWER),
         ]
