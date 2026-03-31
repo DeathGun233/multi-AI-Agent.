@@ -63,6 +63,17 @@ class AuthService:
             }
             for seed in seeds:
                 if seed.username in existing:
+                    record = existing[seed.username]
+                    changed = False
+                    if record.display_name != seed.display_name:
+                        record.display_name = seed.display_name
+                        changed = True
+                    if record.role != seed.role:
+                        record.role = seed.role
+                        changed = True
+                    if not record.is_active:
+                        record.is_active = True
+                        changed = True
                     continue
                 session.add(
                     UserAccountRecord(
