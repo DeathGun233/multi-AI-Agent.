@@ -14,6 +14,9 @@ class Settings:
     model_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     api_key: str | None = None
     disable_llm: bool = False
+    secret_key: str = "flowpilot-demo-secret"
+    session_cookie_name: str = "flowpilot_session"
+    users_json: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -30,6 +33,9 @@ class Settings:
             model_base_url=os.getenv("MODEL_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
             api_key=api_key,
             disable_llm=disable_llm,
+            secret_key=os.getenv("FLOWPILOT_SECRET_KEY", "flowpilot-demo-secret"),
+            session_cookie_name=os.getenv("FLOWPILOT_SESSION_COOKIE", "flowpilot_session"),
+            users_json=os.getenv("FLOWPILOT_USERS_JSON"),
         )
 
     @property

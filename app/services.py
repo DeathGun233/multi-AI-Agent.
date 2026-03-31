@@ -431,7 +431,7 @@ class WorkflowEngine:
     def get_graph_definition(self) -> dict[str, Any]:
         return self.graph_definition
 
-    def submit_review(self, run_id: str, approve: bool, comment: str = "") -> WorkflowRun | None:
+    def submit_review(self, run_id: str, approve: bool, comment: str = "", reviewer_name: str = "人工审核") -> WorkflowRun | None:
         run = self.repository.get(run_id)
         if run is None:
             return None
@@ -443,11 +443,13 @@ class WorkflowEngine:
         )
         run.add_log(
             "HumanReviewer",
-            ("人工审核通过。" if approve else "人工审核驳回。") + (f" 备注：{comment}" if comment else ""),
+            f"{reviewer_name}"
+            + (" 已人工审核通过。" if approve else " 已人工审核驳回。")
+            + (f" 备注：{comment}" if comment else ""),
         )
         if run.review is not None:
             reasons = list(run.review.reasons)
-            reasons.append(("人工审核通过" if approve else "人工审核驳回") + (f"：{comment}" if comment else ""))
+            reasons.append(f"{reviewer_name}" + ("人工审核通过" if approve else "人工审核驳回") + (f"：{comment}" if comment else ""))
             run.review = ReviewDecision(
                 status=RunStatus.COMPLETED if approve else RunStatus.FAILED,
                 needs_human_review=False,

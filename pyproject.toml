@@ -7,6 +7,7 @@ dependencies = [
   "fastapi>=0.116.1",
   "langgraph>=0.6.7",
   "openai>=1.109.1",
+  "python-multipart>=0.0.20",
   "pymysql>=1.1.1",
   "redis>=6.4.0",
   "sqlalchemy>=2.0.43",

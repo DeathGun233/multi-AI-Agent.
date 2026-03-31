@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}运行历史 · FlowPilot{% endblock %}
+{% block content %}
+<section class="hero">
+  <h2>运行历史</h2>
+  <p>这里按任务维度展示所有流程实例，适合回看执行结果、人工干预情况和各阶段状态。</p>
+</section>
+
+<section class="grid three">
+  <div class="metric"><strong>{{ summary.total_runs }}</strong><span class="muted">总任务数</span></div>
+  <div class="metric"><strong>{{ summary.completed_runs }}</strong><span class="muted">自动或人工完成</span></div>
+  <div class="metric"><strong>{{ summary.failed_runs }}</strong><span class="muted">失败或被驳回</span></div>
+</section>
+
+<section class="panel">
+  <h3>全部任务</h3>
+  {% if runs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>任务</th>
+          <th>状态</th>
+          <th>当前步骤</th>
+          <th>更新时间</th>
+          <th>评分</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td>
+            <strong>{{ run.title }}</strong>
+            <div class="muted">{{ run.id }}</div>
+          </td>
+          <td><span class="badge status-{{ run.status }}">{{ run.status }}</span></td>
+          <td>{{ run.current_step }}</td>
+          <td>{{ run.updated_at }}</td>
+          <td>{{ run.review_score }}</td>
+          <td><a class="button-link secondary" href="/runs/{{ run.id }}">查看详情</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">当前还没有运行记录。</div>
+  {% endif %}
+</section>
+{% endblock %}

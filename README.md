@@ -12,6 +12,9 @@
 - 真实模型接入：默认 `qwen3-max`
 - 真实数据库兼容：`SQLite / MySQL`
 - 缓存兼容：`Redis`
+- 多页面工作台：仪表盘、运行历史、审核中心、详情页
+- 图形化执行时间线
+- 登录态与角色权限：`viewer / operator / reviewer / admin`
 
 ## 技术栈
 
@@ -35,6 +38,9 @@
 - `MODEL_BASE_URL`
 - `DATABASE_URL`
 - `REDIS_URL`
+- `FLOWPILOT_SECRET_KEY`
+- `FLOWPILOT_SESSION_COOKIE`
+- `FLOWPILOT_USERS_JSON`
 
 默认模型端点：
 
@@ -47,6 +53,13 @@ python -m uvicorn app.main:app --reload
 ```
 
 启动后打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
+
+默认演示账号：
+
+- `admin / admin123`
+- `reviewer / reviewer123`
+- `operator / operator123`
+- `viewer / viewer123`
 
 ## 启动 MySQL 和 Redis
 
@@ -72,11 +85,22 @@ python -m pytest -q
 ## API
 
 - `GET /`
+- `GET /login`
+- `POST /login`
+- `POST /logout`
+- `GET /dashboard`
+- `GET /runs`
+- `GET /reviews`
+- `GET /runs/{id}`
 - `GET /api/health`
+- `GET /api/session`
 - `GET /api/workflows/templates`
 - `GET /api/workflows`
+- `GET /api/workflows/review-queue`
+- `GET /api/workflows/graph`
 - `GET /api/workflows/{id}`
 - `POST /api/workflows/run`
+- `POST /api/workflows/{id}/review`
 
 ## 项目说明
 
@@ -85,6 +109,9 @@ python -m pytest -q
 - 多工作流、多 Agent 的执行编排
 - 真实模型增强业务分析与审核
 - MySQL + Redis 兼容的工程化持久化方案
+- 工作台从单页升级为多页面后台，补上运行历史、审核中心和详情页
+- 基于角色的登录态与审核权限控制
+- 任务详情页提供图形化执行时间线，方便演示执行轨迹
 
 ## 文档
 
@@ -92,3 +119,4 @@ python -m pytest -q
 - 第一步升级说明：[docs/第1步-MySQL与Redis升级.md](./docs/第1步-MySQL与Redis升级.md)
 - 第二步升级说明：[docs/第2步-LangGraph状态流升级.md](./docs/第2步-LangGraph状态流升级.md)
 - 第三步升级说明：[docs/第3步-前端工作台升级.md](./docs/第3步-前端工作台升级.md)
+- 第四步升级说明：[docs/第4步-多页面与权限升级.md](./docs/第4步-多页面与权限升级.md)

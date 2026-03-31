@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 · FlowPilot{% endblock %}
+{% block content %}
+<section class="hero">
+  <h2>多 Agent 工作台</h2>
+  <p>从这里发起新流程、查看当前积压、快速跳转到审核队列或最近任务。现在页面已经从单页 Demo 拆成独立工作区，演示时更接近真实后台。</p>
+</section>
+
+<section class="grid three">
+  <div class="metric"><strong>{{ summary.total_runs }}</strong><span class="muted">累计运行任务</span></div>
+  <div class="metric"><strong>{{ summary.completed_runs }}</strong><span class="muted">已完成任务</span></div>
+  <div class="metric"><strong>{{ summary.waiting_review }}</strong><span class="muted">待人工审核</span></div>
+</section>
+
+<section class="split">
+  <div class="panel">
+    <h3>新建工作流</h3>
+    {% if capabilities.can_run %}
+    <form method="post" action="/dashboard/run">
+      <label>
+        工作流类型
+        <select id="workflow_type" name="workflow_type">
+          {% for template in templates_data %}
+          <option value="{{ template.workflow_type }}">{{ template.title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        输入 JSON
+        <textarea id="payload_json" name="payload_json">{{ templates_data[0].sample_payload | tojson(indent=2) }}</textarea>
+      </label>
+      <button type="submit">启动工作流</button>
+    </form>
+    {% else %}
+    <div class="empty">当前账号只有查看权限，不能发起新任务。</div>
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h3>模板中心</h3>
+    <div class="card-list">
+      {% for template in templates_data %}
+      <article class="item-card">
+        <h4>{{ template.title }}</h4>
+        <p class="muted">{{ template.description }}</p>
+        <div class="meta-row">
+          <span class="badge">{{ template.workflow_type }}</span>
+        </div>
+        {% if capabilities.can_run %}
+        <button
+          type="button"
+          class="secondary use-template"
+          data-type="{{ template.workflow_type }}"
+          data-payload='{{ template.sample_payload | tojson }}'
+        >
+          使用这个模板
+        </button>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="split">
+  <div class="panel">
+    <h3>最近运行</h3>
+    {% if recent_runs %}
+    <div class="card-list">
+      {% for run in recent_runs %}
+      <article class="item-card">
+        <h4><a href="/runs/{{ run.id }}">{{ run.title }}</a></h4>
+        <p class="muted">{{ run.objective or "等待目标写入" }}</p>
+        <div class="badge-row">
+          <span class="badge status-{{ run.status }}">{{ run.status }}</span>
+          <span class="badge">{{ run.current_step }}</span>
+          <span class="badge">评分 {{ run.review_score }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">还没有运行记录，先从左侧创建一个工作流。</div>
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h3>系统拓扑</h3>
+    <div class="badge-row">
+      {% for node in graph.nodes %}
+      <span class="badge">{{ node }}</span>
+      {% endfor %}
+    </div>
+    <p>当前运行时：{{ graph.runtime }}，入口节点：{{ graph.entrypoint }}。详情页会展示每次执行的图形化时间线。</p>
+    {% if capabilities.can_review %}
+      {% if review_queue %}
+      <div class="card-list">
+        {% for run in review_queue %}
+        <article class="item-card">
+          <h4><a href="/runs/{{ run.id }}">{{ run.title }}</a></h4>
+          <p class="muted">等待审核，当前步骤：{{ run.current_step }}</p>
+          <div class="badge-row">
+            <span class="badge status-waiting_human">waiting_human</span>
+            <a class="button-link secondary" href="/reviews">前往审核中心</a>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">当前没有待审核任务。</div>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  const workflowType = document.getElementById("workflow_type");
+  const payloadEditor = document.getElementById("payload_json");
+  const templateMap = new Map();
+  document.querySelectorAll(".use-template").forEach((button) => {
+    templateMap.set(button.dataset.type, button.dataset.payload);
+    button.addEventListener("click", () => {
+      workflowType.value = button.dataset.type;
+      payloadEditor.value = JSON.stringify(JSON.parse(button.dataset.payload), null, 2);
+      payloadEditor.focus();
+    });
+  });
+  workflowType?.addEventListener("change", () => {
+    if (templateMap.has(workflowType.value)) {
+      payloadEditor.value = JSON.stringify(JSON.parse(templateMap.get(workflowType.value)), null, 2);
+    }
+  });
+</script>
+{% endblock %}

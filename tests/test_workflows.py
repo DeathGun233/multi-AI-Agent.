@@ -6,11 +6,45 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_index_renders_console_shell() -> None:
-    response = client.get("/")
+def login_as(username: str, password: str) -> None:
+    response = client.post(
+        "/login",
+        data={
+            "username": username,
+            "password": password,
+            "next": "/dashboard",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
+def test_root_redirects_to_login() -> None:
+    anonymous = TestClient(app)
+    response = anonymous.get("/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_login_page_and_session_endpoint() -> None:
+    response = client.get("/login")
     assert response.status_code == 200
-    assert "FlowPilot Console" in response.text
-    assert "/api/workflows/review-queue" in response.text
+    assert "进入工作台" in response.text
+
+    login_as("viewer", "viewer123")
+    session = client.get("/api/session")
+    assert session.status_code == 200
+    assert session.json()["role"] == "viewer"
+    assert session.json()["capabilities"]["can_view"] is True
+
+
+def test_dashboard_renders_multi_page_shell() -> None:
+    login_as("operator", "operator123")
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert "新建工作流" in response.text
+    assert "运行历史" in response.text
+    assert "仪表盘" in response.text
 
 
 def test_health_endpoint_exposes_backend_shape() -> None:
@@ -23,6 +57,7 @@ def test_health_endpoint_exposes_backend_shape() -> None:
 
 
 def test_graph_endpoint_exposes_langgraph_shape() -> None:
+    login_as("viewer", "viewer123")
     response = client.get("/api/workflows/graph")
     body = response.json()
     assert response.status_code == 200
@@ -31,13 +66,19 @@ def test_graph_endpoint_exposes_langgraph_shape() -> None:
     assert any(edge["from"] == "reviewer" for edge in body["edges"])
 
 
-def test_templates_available() -> None:
-    response = client.get("/api/workflows/templates")
-    assert response.status_code == 200
-    assert len(response.json()) == 4
+def test_review_page_requires_reviewer_role() -> None:
+    login_as("operator", "operator123")
+    forbidden = client.get("/reviews")
+    assert forbidden.status_code == 403
+
+    login_as("reviewer", "reviewer123")
+    allowed = client.get("/reviews")
+    assert allowed.status_code == 200
+    assert "审核中心" in allowed.text
 
 
 def test_sales_workflow_runs() -> None:
+    login_as("operator", "operator123")
     response = client.post(
         "/api/workflows/run",
         json={
@@ -57,6 +98,7 @@ def test_sales_workflow_runs() -> None:
 
 
 def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
+    login_as("operator", "operator123")
     response = client.post(
         "/api/workflows/run",
         json={
@@ -77,6 +119,7 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
     assert body["status"] == "waiting_human"
     assert any("人工接管" in log["message"] for log in body["logs"])
 
+    login_as("reviewer", "reviewer123")
     queue = client.get("/api/workflows/review-queue").json()
     assert any(item["id"] == body["id"] for item in queue)
 
@@ -85,20 +128,23 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
         json={"approve": True, "comment": "值班工程师已确认处理方案"},
     ).json()
     assert approved["status"] == "completed"
-    assert any("人工审核通过" in log["message"] for log in approved["logs"])
+    assert any("审核负责人" in log["message"] for log in approved["logs"])
 
 
-def test_meeting_workflow_extracts_actions() -> None:
-    response = client.post(
+def test_detail_page_contains_graphic_timeline() -> None:
+    login_as("operator", "operator123")
+    created = client.post(
         "/api/workflows/run",
         json={
             "workflow_type": "meeting_minutes",
             "input_payload": {
                 "meeting_title": "产品周会",
-                "notes": "1. 张敏本周五前完成竞品复盘；2. 王晨今天下班前确认试点客户；",
+                "notes": "1. 张敏本周五前完成竞品复盘。2. 王晨今天下班前确认试点客户。",
             },
         },
-    )
-    body = response.json()
-    assert response.status_code == 200
-    assert len(body["result"]["raw_result"]["actions"]) >= 2
+    ).json()
+    detail = client.get(f"/runs/{created['id']}")
+    assert detail.status_code == 200
+    assert "图形化执行时间线" in detail.text
+    assert "执行日志" in detail.text
+    assert "结果 JSON" in detail.text

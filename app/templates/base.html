@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}FlowPilot{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #f4f1eb;
+      --panel: rgba(255, 252, 246, 0.92);
+      --panel-strong: #fffdf8;
+      --ink: #191816;
+      --muted: #6b645b;
+      --line: #dfd4c6;
+      --accent: #116149;
+      --accent-soft: #ddefe7;
+      --warn: #b16a22;
+      --warn-soft: #f7e8d6;
+      --danger: #b33b2e;
+      --danger-soft: #f8ddd7;
+      --shadow: 0 16px 36px rgba(32, 24, 17, 0.09);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(17, 97, 73, 0.12), transparent 26%),
+        radial-gradient(circle at top right, rgba(177, 106, 34, 0.12), transparent 22%),
+        linear-gradient(180deg, #faf7f1 0%, var(--bg) 100%);
+      min-height: 100vh;
+    }
+    a { color: inherit; text-decoration: none; }
+    .layout {
+      width: min(1440px, calc(100vw - 28px));
+      margin: 18px auto 28px;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 16px;
+    }
+    .sidebar, .surface {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .sidebar {
+      padding: 20px 16px;
+      position: sticky;
+      top: 18px;
+      height: fit-content;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 30px;
+      letter-spacing: -0.04em;
+    }
+    .brand p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .user-card {
+      margin-top: 18px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.64);
+    }
+    .user-card strong {
+      display: block;
+      font-size: 18px;
+    }
+    .user-card span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .nav {
+      margin-top: 18px;
+      display: grid;
+      gap: 8px;
+    }
+    .nav a {
+      padding: 12px 14px;
+      border-radius: 14px;
+      color: var(--muted);
+      border: 1px solid transparent;
+      transition: 0.2s ease;
+    }
+    .nav a.active {
+      color: var(--ink);
+      background: var(--accent-soft);
+      border-color: rgba(17, 97, 73, 0.18);
+    }
+    .nav a:hover {
+      border-color: var(--line);
+      background: rgba(255, 255, 255, 0.56);
+    }
+    .logout {
+      margin-top: 18px;
+    }
+    .content {
+      display: grid;
+      gap: 16px;
+    }
+    .hero, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+    .hero h2, .panel h3 {
+      margin: 0;
+      letter-spacing: -0.03em;
+    }
+    .hero p, .panel p, .meta, .muted {
+      color: var(--muted);
+    }
+    .hero p {
+      margin: 10px 0 0;
+      line-height: 1.7;
+      max-width: 860px;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      margin-bottom: 6px;
+    }
+    .card-list {
+      display: grid;
+      gap: 12px;
+    }
+    .item-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.62);
+    }
+    .item-card h4 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+    .badge-row, .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--muted);
+    }
+    .badge.status-completed { background: var(--accent-soft); color: var(--accent); }
+    .badge.status-waiting_human { background: var(--warn-soft); color: var(--warn); }
+    .badge.status-failed { background: var(--danger-soft); color: var(--danger); }
+    .badge.status-reviewing { background: #e8eefc; color: #39539c; }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+    th, td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.74);
+    }
+    tr:last-child td { border-bottom: 0; }
+    form {
+      display: grid;
+      gap: 12px;
+    }
+    label {
+      display: grid;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input, textarea, select, button {
+      font: inherit;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--ink);
+    }
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+    button, .button-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 14px;
+      border: 0;
+      cursor: pointer;
+      background: var(--ink);
+      color: #fff;
+      transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+    button.secondary, .button-link.secondary {
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    button.warn { background: var(--warn); }
+    button.danger { background: var(--danger); }
+    button:hover, .button-link:hover { transform: translateY(-1px); }
+    pre {
+      margin: 0;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: #161514;
+      color: #f5f4ef;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .timeline-shell {
+      position: relative;
+      padding: 42px 12px 8px;
+      margin-top: 12px;
+      min-height: 180px;
+    }
+    .timeline-line {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      top: 78px;
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(17, 97, 73, 0.15), rgba(177, 106, 34, 0.2));
+    }
+    .timeline-node {
+      position: absolute;
+      top: 50px;
+      transform: translateX(-50%);
+      width: 210px;
+    }
+    .timeline-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      margin: 0 auto 10px;
+      border: 4px solid white;
+      box-shadow: 0 0 0 1px rgba(17, 97, 73, 0.2);
+      background: var(--accent);
+    }
+    .timeline-card {
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 8px 18px rgba(17, 12, 8, 0.06);
+    }
+    .timeline-card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+    .timeline-card span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .split {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1.1fr 0.9fr;
+    }
+    .empty {
+      padding: 18px;
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.48);
+    }
+    @media (max-width: 1080px) {
+      .layout, .split, .grid.two, .grid.three {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        position: static;
+      }
+      .timeline-node {
+        position: static;
+        transform: none;
+        width: auto;
+        margin-top: 12px;
+      }
+      .timeline-line {
+        display: none;
+      }
+      .timeline-shell {
+        padding: 0;
+        min-height: 0;
+      }
+    }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>FlowPilot</h1>
+        <p>多 Agent 企业流程工作台，聚焦执行编排、人工审核和可观测轨迹。</p>
+      </div>
+      <div class="user-card">
+        <strong>{{ current_user.display_name }}</strong>
+        <span>@{{ current_user.username }} · {{ current_user.role }}</span>
+      </div>
+      <nav class="nav">
+        <a href="/dashboard" class="{% if active_page == 'dashboard' %}active{% endif %}">仪表盘</a>
+        <a href="/runs" class="{% if active_page == 'runs' %}active{% endif %}">运行历史</a>
+        {% if capabilities.can_review %}
+        <a href="/reviews" class="{% if active_page == 'reviews' %}active{% endif %}">审核中心</a>
+        {% endif %}
+      </nav>
+      <form class="logout" method="post" action="/logout">
+        <button class="secondary" type="submit" style="width: 100%;">退出登录</button>
+      </form>
+    </aside>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

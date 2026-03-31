@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}任务详情 · FlowPilot{% endblock %}
+{% block content %}
+<section class="hero">
+  <h2>{{ run_view.title }}</h2>
+  <p>{{ run.objective or "当前任务还没有写入目标描述。" }}</p>
+  <div class="badge-row">
+    <span class="badge status-{{ run.status.value }}">{{ run.status.value }}</span>
+    <span class="badge">{{ run.current_step }}</span>
+    {% if run.review %}
+    <span class="badge">评分 {{ "%.2f"|format(run.review.score) }}</span>
+    {% endif %}
+    <span class="badge">创建于 {{ run_view.created_at }}</span>
+  </div>
+</section>
+
+<section class="panel">
+  <h3>图形化执行时间线</h3>
+  {% if run_view.timeline %}
+  <div class="timeline-shell">
+    <div class="timeline-line"></div>
+    {% for node in run_view.timeline %}
+    <div class="timeline-node" style="left: {{ node.left }}%;">
+      <div class="timeline-dot"></div>
+      <div class="timeline-card">
+        <strong>{{ node.agent }}</strong>
+        <div>{{ node.message }}</div>
+        <span>{{ node.timestamp }} · 持续 {{ node.duration }}</span>
+        {% if node.tool_name %}
+        <div class="meta-row"><span class="badge">{{ node.tool_name }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">当前没有执行日志，还无法生成时间线。</div>
+  {% endif %}
+</section>
+
+<section class="split">
+  <div class="panel">
+    <h3>审核与决策</h3>
+    {% if run.review %}
+    <div class="badge-row">
+      <span class="badge status-{{ run.review.status.value }}">{{ run.review.status.value }}</span>
+      <span class="badge">needs_human_review={{ run.review.needs_human_review }}</span>
+      <span class="badge">score={{ "%.2f"|format(run.review.score) }}</span>
+    </div>
+    <div class="card-list" style="margin-top: 12px;">
+      {% for reason in run.review.reasons %}
+      <div class="item-card">{{ reason }}</div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">当前还没有审核结果。</div>
+    {% endif %}
+
+    {% if capabilities.can_review and run.status.value == "waiting_human" %}
+    <form method="post" action="/runs/{{ run.id }}/review/form" style="margin-top: 16px;">
+      <input type="hidden" name="next_page" value="detail" />
+      <label>
+        人工审核备注
+        <textarea name="comment" placeholder="输入人工判断和处理说明"></textarea>
+      </label>
+      <div class="badge-row">
+        <button type="submit" name="decision" value="approve">审核通过</button>
+        <button type="submit" name="decision" value="reject" class="danger">驳回任务</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>流程图节点</h3>
+    <div class="badge-row">
+      {% for node in graph.nodes %}
+      <span class="badge">{{ node }}</span>
+      {% endfor %}
+    </div>
+    <div class="card-list" style="margin-top: 12px;">
+      {% for edge in graph.edges %}
+      <div class="item-card">
+        <strong>{{ edge.from }} → {{ edge.to }}</strong>
+        {% if edge.condition %}
+        <div class="muted">{{ edge.condition }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="split">
+  <div class="panel">
+    <h3>执行日志</h3>
+    {% if run.logs %}
+    <div class="card-list">
+      {% for log in run.logs %}
+      <div class="item-card">
+        <strong>{{ log.agent }}</strong>
+        <div>{{ log.message }}</div>
+        <div class="meta-row">
+          <span class="badge">{{ log.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S") }}</span>
+          {% if log.tool_call %}
+          <span class="badge">{{ log.tool_call.name }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">当前没有日志。</div>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>结果 JSON</h3>
+    <pre>{{ run.result | tojson(indent=2) }}</pre>
+  </div>
+</section>
+{% endblock %}
