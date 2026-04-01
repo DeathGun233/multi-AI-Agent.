@@ -12,7 +12,7 @@ from app.auth import ROLE_ADMIN, ROLE_OPERATOR, ROLE_REVIEWER, AuthService, Auth
 from app.cache import CacheStore
 from app.config import Settings
 from app.db import Database
-from app.models import BatchExperimentRequest, PromptProfileForm, ReviewSubmission, WorkflowRequest, WorkflowRun
+from app.models import BatchExperimentRequest, BulkDeleteRequest, PromptProfileForm, ReviewSubmission, WorkflowRequest, WorkflowRun
 from app.repository import WorkflowRepository
 from app.services import BatchExperimentService, CostAnalyticsService, EvaluationService, WorkflowEngine
 
@@ -367,6 +367,17 @@ def delete_run_form(run_id: str, request: Request):
     return RedirectResponse(url="/runs", status_code=303)
 
 
+@app.post("/runs/bulk-delete")
+def bulk_delete_runs_form(request: Request, run_ids: list[str] = Form(default_factory=list)):
+    user = _page_user(request, {ROLE_OPERATOR, ROLE_REVIEWER, ROLE_ADMIN})
+    if user is None:
+        return _redirect_to_login(request)
+    deleted_ids = engine.delete_runs(run_ids)
+    if not deleted_ids:
+        return RedirectResponse(url="/runs", status_code=303)
+    return RedirectResponse(url="/runs", status_code=303)
+
+
 @app.get("/reviews", response_class=HTMLResponse)
 def reviews_page(request: Request):
     user = _page_user(request, {ROLE_REVIEWER, ROLE_ADMIN})
@@ -516,6 +527,17 @@ def delete_workflow(run_id: str, request: Request):
     if not deleted:
         raise HTTPException(status_code=404, detail="workflow run not found")
     return {"ok": True, "run_id": run_id}
+
+
+@app.post("/api/workflows/bulk-delete")
+def bulk_delete_workflows(request: Request, payload: BulkDeleteRequest):
+    auth_service.require_roles(request, ROLE_OPERATOR, ROLE_REVIEWER, ROLE_ADMIN)
+    deleted_ids = engine.delete_runs(payload.run_ids)
+    return {
+        "ok": True,
+        "deleted_count": len(deleted_ids),
+        "deleted_run_ids": deleted_ids,
+    }
 
 
 @app.get("/api/workflows/review-queue")

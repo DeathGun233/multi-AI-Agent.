@@ -740,6 +740,9 @@ class WorkflowEngine:
     def delete_run(self, run_id: str) -> bool:
         return self.repository.delete_run(run_id)
 
+    def delete_runs(self, run_ids: list[str]) -> list[str]:
+        return self.repository.delete_runs(run_ids)
+
     def create_prompt_profile(self, form: PromptProfileForm) -> PromptProfile:
         return self.prompt_profiles.create_profile(form)
 

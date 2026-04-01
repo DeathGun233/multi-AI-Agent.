@@ -95,6 +95,28 @@ class WorkflowRepository:
             self.cache.set_json(f"workflow_run:{run_id}", {})
         return deleted
 
+    def delete_runs(self, run_ids: list[str]) -> list[str]:
+        normalized_ids = [run_id for run_id in dict.fromkeys(run_ids) if run_id]
+        if not normalized_ids:
+            return []
+        with self.database.session() as session:
+            existing_records = session.scalars(
+                select(WorkflowRunRecord).where(WorkflowRunRecord.id.in_(normalized_ids))
+            ).all()
+            deleted_ids = [record.id for record in existing_records]
+            if not deleted_ids:
+                return []
+            session.execute(
+                delete(FeedbackSampleRecord).where(FeedbackSampleRecord.source_run_id.in_(deleted_ids))
+            )
+            session.execute(
+                delete(WorkflowRunRecord).where(WorkflowRunRecord.id.in_(deleted_ids))
+            )
+        if self.cache:
+            for run_id in deleted_ids:
+                self.cache.set_json(f"workflow_run:{run_id}", {})
+        return deleted_ids
+
     def save_prompt_profile(self, prompt_profile: PromptProfile) -> PromptProfile:
         with self.database.session() as session:
             record = session.get(PromptProfileRecord, prompt_profile.profile_id)

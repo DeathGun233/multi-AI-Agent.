@@ -412,6 +412,47 @@ def test_run_can_be_deleted_and_related_feedback_samples_are_removed() -> None:
     assert all(item["source_run_id"] != created["id"] for item in feedback_samples_after)
 
 
+def test_runs_can_be_bulk_deleted_with_related_feedback_samples_removed() -> None:
+    created_ids = []
+
+    login_as("operator", "operator123")
+    for customer in ["批量删除客户A", "批量删除客户B"]:
+        created = client.post(
+            "/api/workflows/run",
+            json={
+                "workflow_type": "support_triage",
+                "input_payload": {
+                    "tickets": [{"customer": customer, "message": "生产系统报错，需要尽快处理。"}]
+                },
+                "model_name_override": "qwen-turbo",
+                "prompt_profile_id": "balanced-v1",
+                "routing_policy_id": "strict-review-v1",
+            },
+        ).json()
+        created_ids.append(created["id"])
+
+    login_as("reviewer", "reviewer123")
+    for run_id in created_ids:
+        reviewed = client.post(
+            f"/api/workflows/{run_id}/review",
+            json={"approve": True, "comment": "用于批量删除测试的反馈样本。"},
+        )
+        assert reviewed.status_code == 200
+
+    feedback_samples = client.get("/api/feedback-samples").json()
+    assert all(any(item["source_run_id"] == run_id for item in feedback_samples) for run_id in created_ids)
+
+    deleted = client.post("/api/workflows/bulk-delete", json={"run_ids": created_ids})
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted_count"] == 2
+    assert set(deleted.json()["deleted_run_ids"]) == set(created_ids)
+
+    workflows = client.get("/api/workflows").json()
+    assert all(item["id"] not in created_ids for item in workflows)
+    feedback_samples_after = client.get("/api/feedback-samples").json()
+    assert all(item["source_run_id"] not in created_ids for item in feedback_samples_after)
+
+
 def test_external_data_service_normalizes_github_issues() -> None:
     service = ExternalDataService(Settings(disable_llm=True))
     service._fetch_json = lambda _url: [

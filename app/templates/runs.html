@@ -8,9 +8,21 @@
 </div>
 
 <section class="card">
+  {% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}
+  <form method="post" action="/runs/bulk-delete" id="bulk-delete-form" onsubmit="return confirmBulkDelete();" style="margin-bottom:16px;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button type="button" class="ghost" onclick="toggleAllRuns(true)">全选</button>
+      <button type="button" class="ghost" onclick="toggleAllRuns(false)">取消全选</button>
+      <button type="submit" class="secondary" id="bulk-delete-button" disabled>删除已选记录</button>
+      <span class="subtle" id="selected-run-count">当前未选中记录</span>
+    </div>
+  {% endif %}
   <table>
     <thead>
       <tr>
+        {% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}
+        <th style="width:52px;">选择</th>
+        {% endif %}
         <th>工作流</th>
         <th>状态</th>
         <th>模型</th>
@@ -23,6 +35,18 @@
     <tbody>
       {% for row in runs %}
       <tr>
+        {% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}
+        <td>
+          <input
+            type="checkbox"
+            name="run_ids"
+            value="{{ row.id }}"
+            class="run-checkbox"
+            form="bulk-delete-form"
+            onchange="updateBulkDeleteState()"
+          >
+        </td>
+        {% endif %}
         <td><a href="/runs/{{ row.id }}"><strong>{{ row.title }}</strong></a><div class="subtle">{{ row.objective }}</div></td>
         <td><span class="badge status-{{ row.status }}">{{ status_label(row.status) }}</span></td>
         <td>{{ row.model_name }}</td>
@@ -41,9 +65,49 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="subtle">还没有运行记录。</td></tr>
+      <tr><td colspan="{% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}8{% else %}7{% endif %}" class="subtle">还没有运行记录。</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  {% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}
+  </form>
+  {% endif %}
 </section>
+
+{% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}
+<script>
+  function selectedRunCount() {
+    return document.querySelectorAll(".run-checkbox:checked").length;
+  }
+
+  function updateBulkDeleteState() {
+    const count = selectedRunCount();
+    const button = document.getElementById("bulk-delete-button");
+    const label = document.getElementById("selected-run-count");
+    if (button) {
+      button.disabled = count === 0;
+    }
+    if (label) {
+      label.textContent = count > 0 ? `已选中 ${count} 条记录` : "当前未选中记录";
+    }
+  }
+
+  function toggleAllRuns(checked) {
+    document.querySelectorAll(".run-checkbox").forEach((checkbox) => {
+      checkbox.checked = checked;
+    });
+    updateBulkDeleteState();
+  }
+
+  function confirmBulkDelete() {
+    const count = selectedRunCount();
+    if (count === 0) {
+      return false;
+    }
+    return confirm(`确认批量删除已选中的 ${count} 条工作流记录吗？`);
+  }
+
+  updateBulkDeleteState();
+</script>
+{% endif %}
 {% endblock %}

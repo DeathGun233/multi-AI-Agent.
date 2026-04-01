@@ -114,6 +114,10 @@ class ReviewSubmission(BaseModel):
     comment: str = ""
 
 
+class BulkDeleteRequest(BaseModel):
+    run_ids: list[str] = Field(default_factory=list)
+
+
 class WorkflowPlan(BaseModel):
     workflow_type: WorkflowType
     objective: str
