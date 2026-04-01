@@ -20,11 +20,47 @@ from app.services import BatchExperimentService, CostAnalyticsService, Evaluatio
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 settings = Settings.from_env()
+
+
+def status_label(value: str) -> str:
+    return {
+        "created": "已创建",
+        "planning": "规划中",
+        "executing": "执行中",
+        "reviewing": "审核判断中",
+        "waiting_human": "待人工审核",
+        "completed": "已完成",
+        "failed": "已失败",
+    }.get(value, value)
+
+
+def role_label(value: str) -> str:
+    return {
+        "viewer": "只读查看",
+        "operator": "流程操作",
+        "reviewer": "审核人员",
+        "admin": "管理员",
+    }.get(value, value)
+
+
+def workflow_label(value: str) -> str:
+    return {
+        "sales_followup": "销售分析与跟进计划",
+        "marketing_campaign": "营销内容工厂",
+        "support_triage": "客服工单智能分流",
+        "meeting_minutes": "会议纪要转执行系统",
+    }.get(value, value)
+
+
 templates.env.globals["settings"] = settings
+templates.env.globals["status_label"] = status_label
+templates.env.globals["role_label"] = role_label
+templates.env.globals["workflow_label"] = workflow_label
+
 database = Database(settings.database_url)
 cache = CacheStore(settings.redis_url)
 
-app = FastAPI(title="FlowPilot", version="0.9.0")
+app = FastAPI(title="FlowPilot", version="1.0.0")
 repository = WorkflowRepository(database, cache)
 engine = WorkflowEngine(repository, settings)
 evaluation_service = EvaluationService(repository, engine)
@@ -61,6 +97,10 @@ def _template_response(request: Request, template_name: str, context: dict, stat
 
 def _pretty_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def _workflow_titles() -> dict[str, str]:
+    return {item.workflow_type.value: item.title for item in engine.list_templates()}
 
 
 def _build_llm_summary(run: WorkflowRun) -> dict[str, object]:
@@ -117,7 +157,7 @@ def _build_timeline(run: WorkflowRun) -> list[dict]:
 
 
 def _build_run_rows(runs: list[WorkflowRun]) -> list[dict]:
-    templates_by_type = {item.workflow_type.value: item.title for item in engine.list_templates()}
+    titles = _workflow_titles()
     rows = []
     for run in runs:
         execution_profile = run.result.get("execution_profile", {}) if isinstance(run.result, dict) else {}
@@ -126,15 +166,15 @@ def _build_run_rows(runs: list[WorkflowRun]) -> list[dict]:
         rows.append(
             {
                 "id": run.id,
-                "title": templates_by_type.get(run.workflow_type.value, run.workflow_type.value),
+                "title": titles.get(run.workflow_type.value, workflow_label(run.workflow_type.value)),
                 "status": run.status.value,
                 "current_step": run.current_step,
                 "objective": run.objective,
                 "review_score": f"{run.review.score:.2f}" if run.review else "--",
                 "updated_at": run.updated_at.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                 "model_name": execution_profile.get("primary_model_name", settings.model_name),
-                "prompt_profile_label": f"{prompt_profile.get('name', 'n/a')} {prompt_profile.get('version', '')}".strip(),
-                "routing_policy_name": routing_policy.get("name", "n/a"),
+                "prompt_profile_label": f"{prompt_profile.get('name', '未命名')} {prompt_profile.get('version', '')}".strip(),
+                "routing_policy_name": routing_policy.get("name", "未配置"),
             }
         )
     return rows
@@ -146,7 +186,6 @@ def _compare_summary() -> dict[str, object]:
     for run in engine.list_runs():
         execution_profile = run.result.get("execution_profile", {}) if isinstance(run.result, dict) else {}
         prompt_profile = execution_profile.get("prompt_profile", {})
-        routing_policy = execution_profile.get("routing_policy", {})
         key = (
             run.workflow_type.value,
             execution_profile.get("primary_model_name", settings.model_name),
@@ -160,11 +199,11 @@ def _compare_summary() -> dict[str, object]:
         routing_policy = group[0].result.get("execution_profile", {}).get("routing_policy", {})
         rows.append(
             {
-                "workflow_type": workflow_type,
+                "workflow_type": workflow_label(workflow_type),
                 "model_name": model_name,
                 "prompt_profile_id": prompt_id,
-                "prompt_profile_label": f"{prompt_profile.get('name', 'n/a')} {prompt_profile.get('version', '')}".strip(),
-                "routing_policy_name": routing_policy.get("name", "n/a"),
+                "prompt_profile_label": f"{prompt_profile.get('name', '未命名')} {prompt_profile.get('version', '')}".strip(),
+                "routing_policy_name": routing_policy.get("name", "未配置"),
                 "run_count": len(group),
                 "avg_score": round(sum(run.review.score for run in group if run.review) / max(sum(1 for run in group if run.review), 1), 3),
                 "avg_latency_ms": round(sum(call.latency_ms for call in llm_calls) / max(len(llm_calls), 1), 1) if llm_calls else 0.0,
@@ -206,7 +245,12 @@ def login_page(request: Request, next: str = "/dashboard"):
 def login_submit(request: Request, username: str = Form(...), password: str = Form(...), next: str = Form("/dashboard")):
     user = auth_service.authenticate(username, password)
     if user is None:
-        return _template_response(request, "login.html", {"request": request, "next": _safe_next_path(next), "error": "Invalid credentials"}, status_code=401)
+        return _template_response(
+            request,
+            "login.html",
+            {"request": request, "next": _safe_next_path(next), "error": "用户名或密码错误"},
+            status_code=401,
+        )
     response = RedirectResponse(url=_safe_next_path(next), status_code=303)
     response.set_cookie(
         key=settings.session_cookie_name,
@@ -322,8 +366,7 @@ def compare_page(request: Request):
     user = _page_user(request)
     if user is None:
         return _redirect_to_login(request)
-    summary = _compare_summary()
-    return _template_response(request, "compare.html", _common_context(request, user, "compare", summary=summary))
+    return _template_response(request, "compare.html", _common_context(request, user, "compare", summary=_compare_summary()))
 
 
 @app.get("/evaluations", response_class=HTMLResponse)
@@ -390,8 +433,11 @@ def costs_page(request: Request):
     user = _page_user(request)
     if user is None:
         return _redirect_to_login(request)
-    summary = cost_service.build_summary()
-    return _template_response(request, "costs.html", _common_context(request, user, "costs", summary=summary))
+    return _template_response(
+        request,
+        "costs.html",
+        _common_context(request, user, "costs", summary=cost_service.build_summary()),
+    )
 
 
 @app.get("/batches", response_class=HTMLResponse)

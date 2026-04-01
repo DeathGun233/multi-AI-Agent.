@@ -2,8 +2,8 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Review Queue</h1>
-    <p>Manual approval area for runs that need a human decision.</p>
+    <h1>审核中心</h1>
+    <p>查看所有待人工复核的任务，并进入详情页完成审核。</p>
   </div>
 </div>
 
@@ -11,24 +11,24 @@
   <table>
     <thead>
       <tr>
-        <th>Workflow</th>
-        <th>Status</th>
-        <th>Model</th>
+        <th>工作流</th>
+        <th>状态</th>
+        <th>模型</th>
         <th>Prompt</th>
-        <th>Updated</th>
+        <th>更新时间</th>
       </tr>
     </thead>
     <tbody>
       {% for row in review_queue %}
       <tr>
         <td><a href="/runs/{{ row.id }}"><strong>{{ row.title }}</strong></a><div class="subtle">{{ row.objective }}</div></td>
-        <td><span class="badge status-{{ row.status }}">{{ row.status }}</span></td>
+        <td><span class="badge status-{{ row.status }}">{{ status_label(row.status) }}</span></td>
         <td>{{ row.model_name }}</td>
         <td>{{ row.prompt_profile_label }}</td>
         <td>{{ row.updated_at }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="subtle">No pending reviews.</td></tr>
+      <tr><td colspan="5" class="subtle">当前没有待审核任务。</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -2,27 +2,27 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Evaluations</h1>
-    <p>Run baseline comparisons and include manual feedback samples as a growing regression set.</p>
+    <h1>自动评测</h1>
+    <p>运行候选方案与基线方案对比，并把人工反馈样本纳入回归验证。</p>
   </div>
 </div>
 
 <div class="grid two">
   <section class="card">
-    <h2>Start evaluation</h2>
+    <h2>发起评测</h2>
     <form method="post" action="/evaluations/run" class="stack">
-      <label>Dataset
+      <label>评测集
         <select name="dataset_id">
           {% for item in datasets %}
-          <option value="{{ item.dataset_id }}">{{ item.name }} · {{ item.case_count }} cases</option>
+          <option value="{{ item.dataset_id }}">{{ item.name }} · {{ item.case_count }} 条样本</option>
           {% endfor %}
         </select>
       </label>
       <div class="grid two">
         <div class="card">
-          <h3>Candidate</h3>
+          <h3>候选方案</h3>
           <div class="stack">
-            <label>Model
+            <label>模型
               <select name="candidate_model_name">
                 {% for item in models %}
                 <option value="{{ item.model_name }}">{{ item.label }}</option>
@@ -36,7 +36,7 @@
                 {% endfor %}
               </select>
             </label>
-            <label>Routing
+            <label>路由
               <select name="candidate_routing_policy_id">
                 {% for item in routing_policies %}
                 <option value="{{ item.policy_id }}">{{ item.name }}</option>
@@ -46,9 +46,9 @@
           </div>
         </div>
         <div class="card">
-          <h3>Baseline</h3>
+          <h3>基线方案</h3>
           <div class="stack">
-            <label>Model
+            <label>模型
               <select name="baseline_model_name">
                 {% for item in models %}
                 <option value="{{ item.model_name }}">{{ item.label }}</option>
@@ -62,7 +62,7 @@
                 {% endfor %}
               </select>
             </label>
-            <label>Routing
+            <label>路由
               <select name="baseline_routing_policy_id">
                 {% for item in routing_policies %}
                 <option value="{{ item.policy_id }}">{{ item.name }}</option>
@@ -72,18 +72,18 @@
           </div>
         </div>
       </div>
-      <button type="submit">Run evaluation</button>
+      <button type="submit">开始评测</button>
     </form>
   </section>
 
   <section class="card">
-    <h2>Datasets</h2>
+    <h2>评测集概览</h2>
     <div class="stack">
       {% for item in datasets %}
       <div class="card">
         <strong>{{ item.name }}</strong>
         <div class="subtle">{{ item.description }}</div>
-        <div class="badge">{{ item.case_count }} cases</div>
+        <div class="badge">{{ item.case_count }} 条样本</div>
       </div>
       {% endfor %}
     </div>
@@ -91,14 +91,14 @@
 </div>
 
 <section class="card" style="margin-top:18px;">
-  <h2>Evaluation history</h2>
+  <h2>评测历史</h2>
   <table>
     <thead>
       <tr>
-        <th>Dataset</th>
-        <th>Candidate</th>
-        <th>Baseline</th>
-        <th>Summary</th>
+        <th>评测集</th>
+        <th>候选方案</th>
+        <th>基线方案</th>
+        <th>结果摘要</th>
       </tr>
     </thead>
     <tbody>
@@ -108,13 +108,13 @@
         <td>{{ item.candidate_profile.primary_model_name }} · {{ item.candidate_profile.prompt_profile.name }}</td>
         <td>{{ item.baseline_profile.primary_model_name }} · {{ item.baseline_profile.prompt_profile.name }}</td>
         <td>
-          <div>candidate_avg_score: {{ item.summary.candidate_avg_score }}</div>
-          <div>baseline_avg_score: {{ item.summary.baseline_avg_score }}</div>
-          <div>score_delta: {{ item.summary.score_delta }}</div>
+          <div>候选平均分：{{ item.summary.candidate_avg_score }}</div>
+          <div>基线平均分：{{ item.summary.baseline_avg_score }}</div>
+          <div>分数差值：{{ item.summary.score_delta }}</div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="subtle">No evaluations yet.</td></tr>
+      <tr><td colspan="4" class="subtle">当前还没有评测记录。</td></tr>
       {% endfor %}
     </tbody>
   </table>

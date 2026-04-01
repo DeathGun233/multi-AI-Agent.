@@ -2,59 +2,86 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Batch A/B</h1>
-    <p>Run prompt and model variants in bulk, then compare score, cost, latency, and handoff rate.</p>
+    <h1>批量实验</h1>
+    <p>一次性跑多个模型与 Prompt 变体，并按得分、成本、时延和接管率自动排序。</p>
   </div>
 </div>
 
 <div class="grid two">
   <section class="card">
-    <h2>Create batch experiment</h2>
+    <h2>创建批量实验</h2>
     <form id="batch-form" class="stack">
-      <label>Experiment name<input id="batch-name" value="Prompt AB lab"></label>
-      <label>Workflow template
+      <label>实验名称<input id="batch-name" value="Prompt A/B 对比实验"></label>
+      <label>工作流模板
         <select id="batch-workflow-type">
           {% for item in templates_catalog %}
           <option value="{{ item.workflow_type.value }}" data-sample='{{ item.sample_payload | tojson }}'>{{ item.title }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Repeats<input id="batch-repeats" type="number" min="1" max="5" value="2"></label>
-      <label>Input payload<textarea id="batch-payload"></textarea></label>
-      <label>Variants JSON
+      <label>重复次数<input id="batch-repeats" type="number" min="1" max="5" value="2"></label>
+      <label>输入 JSON<textarea id="batch-payload"></textarea></label>
+      <label>变体 JSON
         <textarea id="batch-variants">[
   {
     "variant_id": "control",
-    "label": "Control",
+    "label": "对照组",
     "model_name": "qwen-plus",
     "prompt_profile_id": "balanced-v1",
     "routing_policy_id": "balanced-router-v1"
   },
   {
     "variant_id": "challenger",
-    "label": "Challenger",
+    "label": "挑战组",
     "model_name": "qwen3-max",
     "prompt_profile_id": "ops-deep-v1",
     "routing_policy_id": "strict-review-v1"
   }
 ]</textarea>
       </label>
-      <button type="submit">Run batch</button>
+      <button type="submit">开始实验</button>
       <div id="batch-result" class="subtle"></div>
     </form>
   </section>
 
   <section class="card">
-    <h2>Existing batches</h2>
+    <h2>历史实验</h2>
     <div class="stack">
       {% for batch in batches %}
       <div class="card">
         <strong>{{ batch.name }}</strong>
-        <div class="subtle">{{ batch.workflow_type.value }} · {{ batch.summary.run_count }} runs</div>
-        <pre>{{ batch.summary | tojson(indent=2) }}</pre>
+        <div class="subtle">{{ workflow_label(batch.workflow_type.value) }} · 共 {{ batch.summary.run_count }} 次运行</div>
+        {% if batch.summary.champion %}
+        <div class="badge">冠军方案：{{ batch.summary.champion.variant_label }}</div>
+        <div class="subtle">{{ batch.summary.champion.reason }}</div>
+        {% endif %}
+        <table style="margin-top:12px;">
+          <thead>
+            <tr>
+              <th>排名</th>
+              <th>方案</th>
+              <th>平均分</th>
+              <th>平均成本</th>
+              <th>平均时延</th>
+              <th>接管率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in batch.summary.rows %}
+            <tr>
+              <td>{% if row.is_champion %}冠军{% else %}第 {{ row.rank }} 名{% endif %}</td>
+              <td>{{ row.variant_label }}</td>
+              <td>{{ row.avg_score }}</td>
+              <td>${{ row.avg_cost_usd }}</td>
+              <td>{{ row.avg_latency_ms }} 毫秒</td>
+              <td>{{ row.handoff_rate }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
       {% else %}
-      <div class="subtle">No batch experiments yet.</div>
+      <div class="subtle">当前还没有批量实验记录。</div>
       {% endfor %}
     </div>
   </section>
@@ -74,7 +101,7 @@
   document.getElementById("batch-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const resultBox = document.getElementById("batch-result");
-    resultBox.textContent = "Running batch experiment...";
+    resultBox.textContent = "正在运行批量实验...";
     try {
       const response = await fetch("/api/batches", {
         method: "POST",
@@ -89,9 +116,9 @@
       });
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(body.detail || "Failed to run batch");
+        throw new Error(body.detail || "批量实验启动失败");
       }
-      resultBox.textContent = `Batch created: ${body.name}`;
+      resultBox.textContent = `实验已完成：${body.name}`;
       window.location.reload();
     } catch (error) {
       resultBox.textContent = error.message;

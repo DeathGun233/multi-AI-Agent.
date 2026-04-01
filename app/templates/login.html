@@ -4,23 +4,23 @@
   <div class="card" style="width:min(480px, 100%);">
     <div class="header" style="display:block;margin-bottom:18px;">
       <h1>FlowPilot</h1>
-      <p>Sign in to open the multi-agent workflow lab.</p>
+      <p>登录后进入多智能体工作流实验台。</p>
     </div>
     {% if error %}
     <div class="badge" style="color:var(--bad);margin-bottom:12px;">{{ error }}</div>
     {% endif %}
     <form method="post" action="/login" class="stack">
       <input type="hidden" name="next" value="{{ next }}">
-      <label>Username<input name="username" autocomplete="username"></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password"></label>
-      <button type="submit">Sign in</button>
+      <label>用户名<input name="username" autocomplete="username"></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password"></label>
+      <button type="submit">进入工作台</button>
     </form>
     <div class="card" style="margin-top:16px;">
-      <strong>Demo accounts</strong>
-      <div class="subtle" style="margin-top:8px;">admin / admin123</div>
-      <div class="subtle">reviewer / reviewer123</div>
-      <div class="subtle">operator / operator123</div>
-      <div class="subtle">viewer / viewer123</div>
+      <strong>演示账号</strong>
+      <div class="subtle" style="margin-top:8px;">管理员：admin / admin123</div>
+      <div class="subtle">审核人员：reviewer / reviewer123</div>
+      <div class="subtle">流程操作：operator / operator123</div>
+      <div class="subtle">只读查看：viewer / viewer123</div>
     </div>
   </div>
 </div>

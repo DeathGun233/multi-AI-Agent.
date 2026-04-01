@@ -2,97 +2,97 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Dashboard</h1>
-    <p>Launch a workflow, inspect recent activity, and see which runs are waiting for manual review.</p>
+    <h1>总览面板</h1>
+    <p>选择工作流、配置模型与 Prompt 方案，快速发起一次完整的多智能体执行。</p>
   </div>
 </div>
 
 <div class="grid two">
   <section class="card">
-    <h2>Launch workflow</h2>
-    <div class="subtle">Use the JSON payload from a template, then run the workflow through the API.</div>
+    <h2>新建工作流</h2>
+    <div class="subtle">从模板载入 JSON 输入，然后直接通过 API 启动运行。</div>
     <form id="run-form" class="stack" style="margin-top:16px;">
-      <label>Workflow template
+      <label>工作流模板
         <select id="workflow-type">
           {% for item in templates_catalog %}
           <option value="{{ item.workflow_type.value }}" data-sample='{{ item.sample_payload | tojson }}'>{{ item.title }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Model
+      <label>模型
         <select id="model-name">
           {% for item in models %}
-          <option value="{{ item.model_name }}">{{ item.label }} · {{ item.model_name }}</option>
+          <option value="{{ item.model_name }}">{{ item.label }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Prompt profile
+      <label>Prompt 方案
         <select id="prompt-profile-id">
           {% for item in prompt_profiles %}
           <option value="{{ item.profile_id }}">{{ item.name }} {{ item.version }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Routing policy
+      <label>路由策略
         <select id="routing-policy-id">
           {% for item in routing_policies %}
           <option value="{{ item.policy_id }}">{{ item.name }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Input payload
+      <label>输入 JSON
         <textarea id="input-payload"></textarea>
       </label>
-      <button type="submit">Run workflow</button>
+      <button type="submit">启动工作流</button>
       <div id="run-result" class="subtle"></div>
     </form>
   </section>
 
   <section class="card">
-    <h2>Review queue</h2>
-    <div class="subtle">Runs currently waiting for human approval.</div>
+    <h2>待审核任务</h2>
+    <div class="subtle">这些任务已被系统判定需要人工复核。</div>
     <div class="stack" style="margin-top:16px;">
       {% for row in review_queue %}
       <a class="card" href="/runs/{{ row.id }}">
         <strong>{{ row.title }}</strong>
         <div class="subtle">{{ row.objective }}</div>
         <div style="margin-top:8px;">
-          <span class="badge status-{{ row.status }}">{{ row.status }}</span>
-          <span class="badge">{{ row.review_score }}</span>
+          <span class="badge status-{{ row.status }}">{{ status_label(row.status) }}</span>
+          <span class="badge">评分 {{ row.review_score }}</span>
         </div>
       </a>
       {% else %}
-      <div class="subtle">No runs are waiting for review.</div>
+      <div class="subtle">当前没有待审核任务。</div>
       {% endfor %}
     </div>
   </section>
 </div>
 
 <section class="card" style="margin-top:18px;">
-  <h2>Recent runs</h2>
+  <h2>最近运行</h2>
   <table>
     <thead>
       <tr>
-        <th>Workflow</th>
-        <th>Status</th>
-        <th>Model</th>
+        <th>工作流</th>
+        <th>状态</th>
+        <th>模型</th>
         <th>Prompt</th>
-        <th>Routing</th>
-        <th>Updated</th>
+        <th>路由</th>
+        <th>更新时间</th>
       </tr>
     </thead>
     <tbody>
       {% for row in recent_runs %}
       <tr>
         <td><a href="/runs/{{ row.id }}"><strong>{{ row.title }}</strong></a><div class="subtle">{{ row.objective }}</div></td>
-        <td><span class="badge status-{{ row.status }}">{{ row.status }}</span></td>
+        <td><span class="badge status-{{ row.status }}">{{ status_label(row.status) }}</span></td>
         <td>{{ row.model_name }}</td>
         <td>{{ row.prompt_profile_label }}</td>
         <td>{{ row.routing_policy_name }}</td>
         <td>{{ row.updated_at }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="subtle">No runs yet.</td></tr>
+      <tr><td colspan="6" class="subtle">还没有运行记录。</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -102,19 +102,17 @@
   const workflowSelect = document.getElementById("workflow-type");
   const payloadInput = document.getElementById("input-payload");
   const resultBox = document.getElementById("run-result");
-
   function syncPayload() {
     const option = workflowSelect.options[workflowSelect.selectedIndex];
     const sample = option.dataset.sample ? JSON.parse(option.dataset.sample) : {};
     payloadInput.value = JSON.stringify(sample, null, 2);
   }
-
   workflowSelect.addEventListener("change", syncPayload);
   syncPayload();
 
   document.getElementById("run-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    resultBox.textContent = "Running workflow...";
+    resultBox.textContent = "正在启动工作流...";
     try {
       const response = await fetch("/api/workflows/run", {
         method: "POST",
@@ -129,9 +127,9 @@
       });
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(body.detail || "Request failed");
+        throw new Error(body.detail || "请求失败");
       }
-      resultBox.innerHTML = `Run created. <a href="/runs/${body.id}">Open detail</a>`;
+      resultBox.innerHTML = `工作流已创建，<a href="/runs/${body.id}">点击查看详情</a>`;
     } catch (error) {
       resultBox.textContent = error.message;
     }

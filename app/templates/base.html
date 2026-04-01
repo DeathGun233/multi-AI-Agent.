@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ settings.app_name }}{% if active_page %} · {{ active_page|title }}{% endif %}</title>
+  <title>{{ settings.app_name }}</title>
   <style>
     :root {
       --bg: #f5f1e8;
@@ -16,11 +16,12 @@
       --good: #2f7d52;
       --warn: #a46b11;
       --bad: #9f3121;
+      --notice: #2c5b95;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
       color: var(--ink);
       background:
         radial-gradient(circle at top left, rgba(182,76,45,.12), transparent 32%),
@@ -32,14 +33,14 @@
     .sidebar {
       padding: 28px 18px;
       border-right: 1px solid var(--line);
-      background: rgba(255,250,242,.8);
+      background: rgba(255,250,242,.86);
       backdrop-filter: blur(10px);
       position: sticky;
       top: 0;
       height: 100vh;
     }
     .brand { font-size: 28px; font-weight: 800; letter-spacing: .02em; }
-    .subtle { color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .subtle, .muted { color: var(--muted); font-size: 14px; line-height: 1.6; }
     .nav { display: grid; gap: 10px; margin: 24px 0; }
     .nav a {
       padding: 12px 14px;
@@ -77,10 +78,15 @@
       border: 1px solid var(--line);
       color: var(--muted);
       font-size: 12px;
+      background: rgba(255,255,255,.5);
     }
     .status-completed { color: var(--good); }
     .status-waiting_human { color: var(--warn); }
     .status-failed { color: var(--bad); }
+    .alert-healthy { border-color: rgba(47,125,82,.28); background: rgba(47,125,82,.08); }
+    .alert-notice { border-color: rgba(44,91,149,.28); background: rgba(44,91,149,.08); }
+    .alert-warning { border-color: rgba(164,107,17,.28); background: rgba(164,107,17,.09); }
+    .alert-danger { border-color: rgba(159,49,33,.28); background: rgba(159,49,33,.10); }
     .btn, button {
       border: 0;
       border-radius: 12px;
@@ -90,9 +96,7 @@
       cursor: pointer;
       font-weight: 700;
     }
-    .btn.secondary, button.secondary {
-      background: var(--brand-dark);
-    }
+    .btn.secondary, button.secondary { background: var(--brand-dark); }
     .btn.ghost, button.ghost {
       background: transparent;
       color: var(--ink);
@@ -108,21 +112,10 @@
       font: inherit;
     }
     textarea { min-height: 130px; resize: vertical; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 12px 10px;
-      border-bottom: 1px solid var(--line);
-      vertical-align: top;
-      text-align: left;
-    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
     th { color: var(--muted); font-weight: 600; }
-    code, pre {
-      font-family: "Cascadia Code", "SFMono-Regular", monospace;
-    }
+    code, pre { font-family: "Cascadia Code", "SFMono-Regular", monospace; }
     pre {
       margin: 0;
       white-space: pre-wrap;
@@ -151,24 +144,12 @@
       background: var(--line);
       transform: translateY(-50%);
     }
-    .timeline-point {
-      position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      width: 160px;
-    }
+    .timeline-point { position: absolute; top: 50%; transform: translate(-50%, -50%); text-align: center; width: 160px; }
     .timeline-dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      margin: 0 auto 8px;
-      background: var(--brand);
-      border: 3px solid #fff;
-      box-shadow: 0 0 0 1px var(--line);
+      width: 14px; height: 14px; border-radius: 50%; margin: 0 auto 8px;
+      background: var(--brand); border: 3px solid #fff; box-shadow: 0 0 0 1px var(--line);
     }
     .metric { font-size: 28px; font-weight: 800; margin: 8px 0 4px; }
-    .muted { color: var(--muted); }
     @media (max-width: 1080px) {
       .layout { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; }
@@ -181,24 +162,24 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">FlowPilot</div>
-      <p class="subtle">Multi-agent AI workflow lab for operations, review, experiments, and cost tracking.</p>
+      <p class="subtle">一个面向企业场景的多智能体 AI 工作流实验台，聚焦执行、评测、审核与成本治理。</p>
       <nav class="nav">
-        <a href="/dashboard" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
-        <a href="/runs" class="{% if active_page == 'runs' %}active{% endif %}">Runs</a>
-        <a href="/reviews" class="{% if active_page == 'reviews' %}active{% endif %}">Review Queue</a>
-        <a href="/compare" class="{% if active_page == 'compare' %}active{% endif %}">Compare</a>
-        <a href="/evaluations" class="{% if active_page == 'evaluations' %}active{% endif %}">Evaluations</a>
-        <a href="/prompts" class="{% if active_page == 'prompts' %}active{% endif %}">Prompt Profiles</a>
-        <a href="/costs" class="{% if active_page == 'costs' %}active{% endif %}">Cost Board</a>
-        <a href="/batches" class="{% if active_page == 'batches' %}active{% endif %}">Batch A/B</a>
+        <a href="/dashboard" class="{% if active_page == 'dashboard' %}active{% endif %}">总览面板</a>
+        <a href="/runs" class="{% if active_page == 'runs' %}active{% endif %}">运行历史</a>
+        <a href="/reviews" class="{% if active_page == 'reviews' %}active{% endif %}">审核中心</a>
+        <a href="/compare" class="{% if active_page == 'compare' %}active{% endif %}">方案对比</a>
+        <a href="/evaluations" class="{% if active_page == 'evaluations' %}active{% endif %}">自动评测</a>
+        <a href="/prompts" class="{% if active_page == 'prompts' %}active{% endif %}">Prompt 方案</a>
+        <a href="/costs" class="{% if active_page == 'costs' %}active{% endif %}">成本看板</a>
+        <a href="/batches" class="{% if active_page == 'batches' %}active{% endif %}">批量实验</a>
       </nav>
       <div class="card stack">
         <div>
           <strong>{{ current_user.display_name }}</strong>
-          <div class="subtle">{{ current_user.role }}</div>
+          <div class="subtle">{{ role_label(current_user.role) }}</div>
         </div>
         <form action="/logout" method="post">
-          <button class="ghost" type="submit">Sign out</button>
+          <button class="ghost" type="submit">退出登录</button>
         </form>
       </div>
     </aside>

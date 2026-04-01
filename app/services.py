@@ -185,12 +185,12 @@ class PlannerAgent:
     @staticmethod
     def _objective(workflow_type: WorkflowType, payload: dict[str, Any]) -> str:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            return f"Analyze {payload.get('period', 'current period')} performance in {payload.get('region', 'all regions')}"
+            return f"分析 {payload.get('period', '当前周期')} 在 {payload.get('region', '全部区域')} 的销售表现"
         if workflow_type == WorkflowType.MARKETING_CAMPAIGN:
-            return f"Launch content for {payload.get('product_name', 'target product')}"
+            return f"为 {payload.get('product_name', '目标产品')} 生成投放内容"
         if workflow_type == WorkflowType.SUPPORT_TRIAGE:
-            return f"Process {len(payload.get('tickets', []))} support tickets"
-        return f"Convert {payload.get('meeting_title', 'meeting')} notes into actions"
+            return f"处理 {len(payload.get('tickets', []))} 条客服工单"
+        return f"将 {payload.get('meeting_title', '会议')} 纪要转成执行动作"
 
 
 class ToolCenter:
@@ -238,16 +238,16 @@ class ToolCenter:
         channels = payload.get("channels", ["xiaohongshu"])
         key_benefits = payload.get("key_benefits", [])
         return {
-            "product_name": payload.get("product_name", "Target product"),
-            "audience": payload.get("audience", "Target audience"),
+            "product_name": payload.get("product_name", "目标产品"),
+            "audience": payload.get("audience", "目标人群"),
             "channels": channels,
             "key_benefits": key_benefits,
-            "tone": payload.get("tone", "clear and useful"),
+            "tone": payload.get("tone", "清晰直接"),
             "compliance_risks": [
-                "Avoid hard performance guarantees",
-                "Review product claims before publishing",
+                "避免使用绝对化效果承诺",
+                "发布前复核产品能力表述",
             ],
-            "channel_notes": {channel: f"Create one hero angle and one CTA for {channel}" for channel in channels},
+            "channel_notes": {channel: f"为 {channel} 准备一个主卖点和一个行动号召" for channel in channels},
         }
 
     @staticmethod
@@ -256,21 +256,21 @@ class ToolCenter:
         enriched = []
         for index, ticket in enumerate(tickets, start=1):
             message = str(ticket.get("message", "")).lower()
-            severity = "medium"
-            category = "general"
-            if any(keyword in message for keyword in ["error", "outage", "release", "production", "blocked"]):
-                severity = "high"
-                category = "incident"
-            elif any(keyword in message for keyword in ["refund", "complaint", "angry"]):
-                severity = "high"
-                category = "complaint"
-            elif any(keyword in message for keyword in ["invoice", "contract", "billing"]):
-                severity = "low"
-                category = "billing"
+            severity = "中"
+            category = "普通咨询"
+            if any(keyword in message for keyword in ["error", "outage", "release", "production", "blocked", "报错", "故障", "上线", "生产", "恢复"]):
+                severity = "高"
+                category = "故障事件"
+            elif any(keyword in message for keyword in ["refund", "complaint", "angry", "投诉", "退款"]):
+                severity = "高"
+                category = "投诉问题"
+            elif any(keyword in message for keyword in ["invoice", "contract", "billing", "开票", "合同", "账单"]):
+                severity = "低"
+                category = "账单合同"
             enriched.append(
                 {
                     "ticket_id": f"T-{index:03d}",
-                    "customer": ticket.get("customer", f"Customer {index}"),
+                    "customer": ticket.get("customer", f"客户{index}"),
                     "category": category,
                     "priority": severity,
                     "message": ticket.get("message", ""),
@@ -278,8 +278,8 @@ class ToolCenter:
             )
         return {
             "tickets": enriched,
-            "high_priority_count": sum(1 for item in enriched if item["priority"] == "high"),
-            "requires_incident_handoff": any(item["category"] == "incident" for item in enriched),
+            "high_priority_count": sum(1 for item in enriched if item["priority"] == "高"),
+            "requires_incident_handoff": any(item["category"] == "故障事件" for item in enriched),
         }
 
     @staticmethod
@@ -288,17 +288,17 @@ class ToolCenter:
         sentences = [item.strip(" .") for item in re.split(r"\d+\.\s*", notes) if item.strip()]
         actions = []
         for index, sentence in enumerate(sentences, start=1):
-            owner = sentence.split(" ", 1)[0] if sentence else f"Owner {index}"
+            owner = sentence.split(" ", 1)[0] if sentence else f"负责人{index}"
             actions.append(
                 {
                     "id": f"A-{index:03d}",
                     "owner": owner,
                     "task": sentence,
-                    "deadline": "next checkpoint",
+                    "deadline": "下个检查点",
                 }
             )
         return {
-            "meeting_title": payload.get("meeting_title", "Meeting"),
+            "meeting_title": payload.get("meeting_title", "会议"),
             "action_items": actions,
             "owner_count": len({item["owner"] for item in actions}),
             "summary_points": sentences[:3],
@@ -319,13 +319,12 @@ class AnalystAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._fallback_analysis(request.workflow_type, raw_result)
         system_prompt = (
-            "You are the AnalystAgent in an enterprise AI workflow. "
-            "Return strict JSON with keys: summary, insights, action_plan."
+            "你是企业 AI 工作流中的 AnalystAgent。请严格返回 JSON，键为 summary、insights、action_plan，全部使用中文。"
         )
         user_prompt = (
-            f"Prompt profile instruction: {prompt_profile.analyst_instruction}\n"
-            f"Workflow type: {request.workflow_type.value}\n"
-            f"Raw result JSON:\n{json.dumps(raw_result, ensure_ascii=False)}"
+            f"Prompt 方案要求：{prompt_profile.analyst_instruction}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"原始结果 JSON：\n{json.dumps(raw_result, ensure_ascii=False)}"
         )
         response = self.llm_service.generate_json(
             route_target="analyst",
@@ -343,54 +342,53 @@ class AnalystAgent:
     @staticmethod
     def _fallback_analysis(workflow_type: WorkflowType, raw_result: dict[str, Any]) -> dict[str, Any]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            risk_names = ", ".join(item["name"] for item in raw_result.get("risk_customers", [])) or "none"
+            risk_names = "、".join(item["name"] for item in raw_result.get("risk_customers", [])) or "暂无"
             return {
                 "summary": (
-                    f"Conversion is {raw_result.get('conversion_rate', 0):.0%} "
-                    f"with average cycle {raw_result.get('avg_cycle_days', 0)} days."
+                    f"当前转化率为 {raw_result.get('conversion_rate', 0):.0%}，平均销售周期 {raw_result.get('avg_cycle_days', 0)} 天。"
                 ),
                 "insights": [
-                    "Overall conversion is below target and risky accounts need manual follow-up.",
-                    f"Risk accounts: {risk_names}.",
+                    "整体转化表现偏弱，风险客户需要重点跟进。",
+                    f"当前风险客户包括：{risk_names}。",
                 ],
                 "action_plan": [
-                    "Create a one-to-one follow-up plan for risky accounts.",
-                    "Review stalled deals with the regional manager.",
+                    "为风险客户制定一对一跟进计划。",
+                    "与区域负责人复盘停滞商机。",
                 ],
             }
         if workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             return {
-                "summary": f"Prepare launch content for {raw_result.get('product_name', 'product')}.",
+                "summary": f"已为 {raw_result.get('product_name', '产品')} 准备投放内容方案。",
                 "insights": [
-                    "Keep channel tone consistent while adapting CTA by platform.",
-                    "Review compliance language before publishing.",
+                    "不同渠道需要统一卖点但单独设计行动号召。",
+                    "发布前需要复核合规表述。",
                 ],
                 "action_plan": [
-                    "Create a hero message for each channel.",
-                    "Add one compliance check before release.",
+                    "为每个渠道明确主卖点。",
+                    "上线前增加一次合规检查。",
                 ],
             }
         if workflow_type == WorkflowType.SUPPORT_TRIAGE:
             return {
-                "summary": f"{raw_result.get('high_priority_count', 0)} tickets need priority handling.",
+                "summary": f"当前有 {raw_result.get('high_priority_count', 0)} 条高优先级工单需要优先处理。",
                 "insights": [
-                    "Incident-like tickets should trigger a human handoff.",
-                    "Low-risk billing questions can auto-draft a reply.",
+                    "疑似故障类工单应优先进入人工接管。",
+                    "低风险账单类问题可自动生成回复草稿。",
                 ],
                 "action_plan": [
-                    "Escalate incident tickets to the on-call owner.",
-                    "Send draft responses for low-risk tickets.",
+                    "将故障工单升级给值班负责人。",
+                    "为低风险工单发送标准回复草稿。",
                 ],
             }
         return {
-            "summary": f"Extracted {len(raw_result.get('action_items', []))} meeting action items.",
+            "summary": f"已抽取 {len(raw_result.get('action_items', []))} 条会议行动项。",
             "insights": [
-                "Each action should have a clear owner and checkpoint.",
-                "Short summaries help the team execute faster.",
+                "每个行动项都需要明确责任人和检查节点。",
+                "简洁总结更利于团队快速执行。",
             ],
             "action_plan": [
-                "Share the action list with owners.",
-                "Review deadline clarity before auto-closing the workflow.",
+                "将行动项同步给对应负责人。",
+                "自动完成前复核截止时间是否清晰。",
             ],
         }
 
@@ -410,14 +408,13 @@ class ContentAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._fallback_deliverables(request.workflow_type, raw_result, analysis)
         system_prompt = (
-            "You are the ContentAgent in an enterprise AI workflow. "
-            "Return strict JSON with keys: deliverables and manager_note."
+            "你是企业 AI 工作流中的 ContentAgent。请严格返回 JSON，键为 deliverables 和 manager_note，全部使用中文。"
         )
         user_prompt = (
-            f"Prompt profile instruction: {prompt_profile.content_instruction}\n"
-            f"Workflow type: {request.workflow_type.value}\n"
-            f"Raw result JSON:\n{json.dumps(raw_result, ensure_ascii=False)}\n"
-            f"Analysis JSON:\n{json.dumps(analysis, ensure_ascii=False)}"
+            f"Prompt 方案要求：{prompt_profile.content_instruction}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"原始结果 JSON：\n{json.dumps(raw_result, ensure_ascii=False)}\n"
+            f"分析结果 JSON：\n{json.dumps(analysis, ensure_ascii=False)}"
         )
         response = self.llm_service.generate_json(
             route_target="content",
@@ -439,43 +436,43 @@ class ContentAgent:
     ) -> dict[str, Any]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
             deliverables = {
-                "daily_brief": analysis.get("summary", ""),
+                "日报摘要": analysis.get("summary", ""),
                 "follow_up_plan": [
                     {
-                        "account": item["name"],
-                        "owner": item["owner"],
-                        "next_action": item["next_action"],
+                        "客户": item["name"],
+                        "负责人": item["owner"],
+                        "下一步动作": item["next_action"],
                     }
                     for item in raw_result.get("risk_customers", [])
                 ],
             }
-            manager_note = "Need manager alignment on risky accounts and longer sales cycles."
+            manager_note = "需要管理者确认风险客户跟进节奏和较长销售周期的处理策略。"
         elif workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             deliverables = {
-                "channel_assets": {
-                    channel: f"{raw_result.get('product_name', 'Product')} for {raw_result.get('audience', 'target users')} on {channel}"
+                "渠道内容资产": {
+                    channel: f"{raw_result.get('product_name', '产品')} 面向 {raw_result.get('audience', '目标用户')} 的 {channel} 投放文案"
                     for channel in raw_result.get("channels", [])
                 },
-                "launch_checklist": raw_result.get("compliance_risks", []),
+                "发布检查清单": raw_result.get("compliance_risks", []),
             }
-            manager_note = "Run compliance review before scheduling posts."
+            manager_note = "排期前建议先完成一次合规复核。"
         elif workflow_type == WorkflowType.SUPPORT_TRIAGE:
             deliverables = {
-                "reply_drafts": [
+                "回复草稿": [
                     {
-                        "ticket_id": item["ticket_id"],
-                        "draft": f"We received your request about {item['category']} and are reviewing it now.",
+                        "工单编号": item["ticket_id"],
+                        "草稿": f"我们已收到关于{item['category']}的问题，正在为您进一步处理，请稍候。",
                     }
                     for item in raw_result.get("tickets", [])
                 ]
             }
-            manager_note = "High priority incident tickets should be reviewed by a human owner."
+            manager_note = "高优先级故障工单应由人工负责人复核。"
         else:
             deliverables = {
-                "summary_mail": analysis.get("summary", ""),
-                "action_items": raw_result.get("action_items", []),
+                "会后摘要邮件": analysis.get("summary", ""),
+                "行动项": raw_result.get("action_items", []),
             }
-            manager_note = "Send the action summary to owners and confirm deadlines."
+            manager_note = "建议将行动摘要同步给负责人并确认截止时间。"
         return {"deliverables": deliverables, "manager_note": manager_note}
 
 
@@ -495,15 +492,14 @@ class ReviewerAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._rule_review(request.workflow_type, raw_result, analysis, deliverables)
         system_prompt = (
-            "You are the ReviewerAgent in an enterprise AI workflow. "
-            "Return strict JSON with keys: status, needs_human_review, score, reasons."
+            "你是企业 AI 工作流中的 ReviewerAgent。请严格返回 JSON，键为 status、needs_human_review、score、reasons，全部使用中文。"
         )
         user_prompt = (
-            f"Prompt profile instruction: {prompt_profile.reviewer_instruction}\n"
-            f"Workflow type: {request.workflow_type.value}\n"
-            f"Raw result JSON:\n{json.dumps(raw_result, ensure_ascii=False)}\n"
-            f"Analysis JSON:\n{json.dumps(analysis, ensure_ascii=False)}\n"
-            f"Deliverables JSON:\n{json.dumps(deliverables, ensure_ascii=False)}"
+            f"Prompt 方案要求：{prompt_profile.reviewer_instruction}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"原始结果 JSON：\n{json.dumps(raw_result, ensure_ascii=False)}\n"
+            f"分析结果 JSON：\n{json.dumps(analysis, ensure_ascii=False)}\n"
+            f"交付结果 JSON：\n{json.dumps(deliverables, ensure_ascii=False)}"
         )
         response = self.llm_service.generate_json(
             route_target="reviewer",
@@ -528,31 +524,31 @@ class ReviewerAgent:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
             if raw_result.get("conversion_rate", 0) <= 0.15:
                 needs_human_review = True
-                reasons.append("Conversion is low and follow-up strategy should be confirmed by a manager.")
+                reasons.append("当前转化率偏低，跟进策略需要管理者确认。")
                 score = 0.65
             if raw_result.get("risk_customers"):
-                reasons.append("Risk accounts require explicit ownership and follow-up cadence.")
+                reasons.append("风险客户需要明确负责人和跟进节奏。")
         elif workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             needs_human_review = True
-            reasons.append("Marketing copy should be reviewed for brand and compliance consistency.")
+            reasons.append("营销内容需要人工复核品牌口径和合规表达。")
             score = 0.7
         elif workflow_type == WorkflowType.SUPPORT_TRIAGE:
             if raw_result.get("requires_incident_handoff"):
                 needs_human_review = True
-                reasons.append("Incident-like tickets require a human handoff.")
+                reasons.append("疑似故障类工单必须进入人工接管。")
                 score = 0.6
         elif workflow_type == WorkflowType.MEETING_MINUTES:
             if not raw_result.get("action_items"):
                 needs_human_review = True
-                reasons.append("No clear action items were extracted.")
+                reasons.append("当前未抽取到清晰的行动项，需要人工确认。")
                 score = 0.55
 
         if not reasons:
-            reasons.append("Result is structured and can proceed automatically.")
+            reasons.append("结果结构完整，可直接流转执行。")
         if not analysis or not deliverables:
             needs_human_review = True
             score = min(score, 0.5)
-            reasons.append("Core analysis or deliverables are incomplete.")
+            reasons.append("核心分析或交付结果不完整，需要人工补充。")
         status = "waiting_human" if needs_human_review else "completed"
         return {
             "status": status,
@@ -582,17 +578,20 @@ class ReviewerAgent:
         if status == "waiting_human":
             reasons = [
                 reason for reason in reasons
-                if not any(text in reason.lower() for text in ["proceed automatically", "auto-complete", "can proceed directly"])
+                if not any(
+                    text in reason.lower()
+                    for text in ["proceed automatically", "auto-complete", "can proceed directly", "直接流转", "自动流转"]
+                )
             ]
             if not reasons:
-                reasons = ["This run needs a human review before execution can continue."]
+                reasons = ["该任务需要人工审核后才能继续执行。"]
         else:
             reasons = [
                 reason for reason in reasons
                 if "human review" not in reason.lower() and "handoff" not in reason.lower()
             ]
             if not reasons:
-                reasons = ["Result is complete enough to proceed automatically."]
+                reasons = ["结果完整且风险可控，可以直接自动流转。"]
 
         score = float(model_review.get("score", rule_review.get("score", 0.8)))
         if status == "waiting_human":
@@ -611,6 +610,11 @@ class FeedbackService:
 
     def create_from_review(self, run: WorkflowRun, reviewer_name: str, comment: str) -> FeedbackSample:
         expected_keywords = self._extract_keywords(comment, run.review.reasons if run.review else [])
+        enriched_snapshot = dict(run.result)
+        enriched_snapshot["feedback_enrichment"] = {
+            "quality_tags": self._extract_quality_tags(run, comment),
+            "scoring_rubric": self._build_scoring_rubric(run),
+        }
         sample = FeedbackSample(
             source_run_id=run.id,
             workflow_type=run.workflow_type,
@@ -620,7 +624,7 @@ class FeedbackService:
             reviewer_comment=comment,
             review_score=run.review.score if run.review else 0.0,
             expected_keywords=expected_keywords,
-            output_snapshot=run.result,
+            output_snapshot=enriched_snapshot,
         )
         return self.repository.save_feedback_sample(sample)
 
@@ -629,19 +633,43 @@ class FeedbackService:
 
     @staticmethod
     def _extract_keywords(comment: str, reasons: list[str]) -> list[str]:
-        text = " ".join([comment] + reasons).lower()
-        tokens = re.findall(r"[a-z]{4,}", text)
+        text = " ".join([comment] + reasons)
+        chinese_tokens = re.findall(r"[\u4e00-\u9fff]{2,6}", text)
+        english_tokens = re.findall(r"[a-z]{4,}", text.lower())
         seen: list[str] = []
-        for token in tokens:
-            if token not in seen:
-                seen.append(token)
+        for token in chinese_tokens + english_tokens:
+            cleaned = token.strip()
+            if cleaned and cleaned not in seen:
+                seen.append(cleaned)
         if seen:
-            return seen[:6]
-        fallback = ["review", "quality"]
-        for reason in reasons:
-            if "risk" in reason.lower():
-                fallback.append("risk")
-        return fallback
+            return seen[:8]
+        return ["人工审核", "质量复核", "执行清晰"]
+
+    @staticmethod
+    def _extract_quality_tags(run: WorkflowRun, comment: str) -> list[str]:
+        tags = [run.workflow_type.value]
+        text = f"{comment} {' '.join(run.review.reasons if run.review else [])}"
+        if "风险" in text or "incident" in text.lower():
+            tags.append("风险控制")
+        if "负责人" in text or "owner" in text.lower():
+            tags.append("责任清晰")
+        if "合规" in text:
+            tags.append("合规复核")
+        if run.status == RunStatus.COMPLETED:
+            tags.append("可执行")
+        else:
+            tags.append("需人工判断")
+        return tags
+
+    @staticmethod
+    def _build_scoring_rubric(run: WorkflowRun) -> dict[str, str | int]:
+        return {
+            "clarity_weight": 35,
+            "completeness_weight": 35,
+            "risk_control_weight": 30,
+            "workflow_type": run.workflow_type.value,
+            "guide": "重点检查输出是否清晰、完整、可执行，并根据场景确认风险是否被正确识别。",
+        }
 
 
 class WorkflowEngine:
@@ -732,7 +760,7 @@ class WorkflowEngine:
         )
         run.add_log(
             "HumanReviewer",
-            f"{reviewer_name} {'approved' if submission.approve else 'rejected'} the run. Comment: {submission.comment or 'no comment'}",
+            f"{reviewer_name}{'已通过' if submission.approve else '已驳回'}该任务。备注：{submission.comment or '无'}",
         )
         if run.review:
             run.review.status = run.status
@@ -785,7 +813,7 @@ class WorkflowEngine:
     def _planner_step(self, state: WorkflowState) -> WorkflowState:
         run = state["run"]
         run.touch(status=RunStatus.PLANNING, current_step="planner")
-        run.add_log("PlannerAgent", f"Generated execution plan with {len(run.plan.steps if run.plan else [])} steps.")
+        run.add_log("PlannerAgent", f"已生成执行计划，共 {len(run.plan.steps if run.plan else [])} 步。")
         return state
 
     def _operator_step(self, state: WorkflowState) -> WorkflowState:
@@ -793,7 +821,7 @@ class WorkflowEngine:
         request = state["request"]
         run.touch(status=RunStatus.EXECUTING, current_step="operator")
         raw_result, tool_call = self.tool_center.run(request.workflow_type, request.input_payload)
-        run.add_log("OperatorAgent", f"Completed tool execution: {tool_call.name}.", tool_call=tool_call)
+        run.add_log("OperatorAgent", f"已完成工具调用：{tool_call.name}。", tool_call=tool_call)
         state["raw_result"] = raw_result
         return state
 
@@ -807,7 +835,7 @@ class WorkflowEngine:
             execution_profile=state["execution_profile"],
             prompt_profile=state["prompt_profile"],
         )
-        run.add_log("AnalystAgent", "Completed analysis and action recommendations.", llm_call=llm_call)
+        run.add_log("AnalystAgent", "已完成结果分析与行动建议整理。", llm_call=llm_call)
         state["analysis"] = analysis
         return state
 
@@ -822,7 +850,7 @@ class WorkflowEngine:
             execution_profile=state["execution_profile"],
             prompt_profile=state["prompt_profile"],
         )
-        run.add_log("ContentAgent", "Prepared business-ready deliverables.", llm_call=llm_call)
+        run.add_log("ContentAgent", "已补充可直接使用的业务输出。", llm_call=llm_call)
         state["deliverables"] = deliverables
         return state
 
@@ -848,7 +876,7 @@ class WorkflowEngine:
             "review": review.model_dump(mode="json"),
             "metrics": summarize_run_metrics(run),
         }
-        run.add_log("ReviewerAgent", "Completed review decision.", llm_call=llm_call)
+        run.add_log("ReviewerAgent", "已完成审核判断。", llm_call=llm_call)
         state["review"] = review_payload
         return state
 
@@ -865,7 +893,7 @@ class WorkflowEngine:
         if run.review:
             run.review.status = RunStatus.COMPLETED
             run.review.needs_human_review = False
-        run.add_log("System", "Workflow completed automatically.")
+        run.add_log("System", "工作流已自动完成。")
         run.result["metrics"] = summarize_run_metrics(run)
         return state
 
@@ -875,7 +903,7 @@ class WorkflowEngine:
         if run.review:
             run.review.status = RunStatus.WAITING_HUMAN
             run.review.needs_human_review = True
-        run.add_log("System", "Workflow routed to human review.")
+        run.add_log("System", "工作流已进入人工审核。")
         run.result["metrics"] = summarize_run_metrics(run)
         return state
 
@@ -892,8 +920,8 @@ class EvaluationService:
             base.append(
                 {
                     "dataset_id": "feedback-loop-v1",
-                    "name": "Human feedback loop",
-                    "description": "Samples generated from manual reviews.",
+                    "name": "人工反馈闭环集",
+                    "description": "由人工审核结果自动沉淀生成的样本集。",
                     "case_count": str(len(samples)),
                 }
             )
@@ -997,7 +1025,7 @@ class EvaluationService:
         cases = [
             EvaluationCaseDefinition(
                 case_id=sample.id,
-                title=f"Feedback sample from {sample.reviewer_name}",
+                title=f"{sample.reviewer_name} 的反馈样本",
                 workflow_type=sample.workflow_type.value,
                 input_payload=sample.input_payload,
                 expected_status=sample.expected_status.value,
@@ -1007,8 +1035,8 @@ class EvaluationService:
         ]
         return EvaluationDatasetRuntime(
             dataset_id="feedback-loop-v1",
-            name="Human feedback loop",
-            description="Evaluation cases generated from manual review feedback.",
+            name="人工反馈闭环集",
+            description="由人工审核反馈自动构建的评测样本集。",
             cases=cases,
         )
 
@@ -1088,6 +1116,26 @@ class BatchExperimentService:
                 }
             )
 
+        summary_rows.sort(
+            key=lambda row: (-row["avg_score"], row["avg_cost_usd"], row["avg_latency_ms"], row["handoff_rate"])
+        )
+        champion = None
+        for index, row in enumerate(summary_rows, start=1):
+            row["rank"] = index
+            row["is_champion"] = index == 1
+            row["champion_reason"] = ""
+            if index == 1:
+                row["champion_reason"] = "综合得分最高，且成本与时延表现更优。"
+                champion = {
+                    "variant_id": row["variant_id"],
+                    "variant_label": row["variant_label"],
+                    "avg_score": row["avg_score"],
+                    "avg_cost_usd": row["avg_cost_usd"],
+                    "avg_latency_ms": row["avg_latency_ms"],
+                    "handoff_rate": row["handoff_rate"],
+                    "reason": row["champion_reason"],
+                }
+
         batch_run = BatchExperimentRun(
             name=request.name,
             workflow_type=request.workflow_type,
@@ -1098,6 +1146,7 @@ class BatchExperimentService:
                 "variant_count": len(request.variants),
                 "run_count": len(results),
                 "rows": summary_rows,
+                "champion": champion,
             },
             results=results,
         )
@@ -1125,6 +1174,22 @@ class CostAnalyticsService:
         days_in_month = 30
         elapsed_days = max(now.day, 1)
         projected_cost = round(total_cost / elapsed_days * days_in_month, 6) if total_cost else 0.0
+
+        alert_level = "healthy"
+        alert_title = "预算运行正常"
+        alert_message = "当前模型消耗低于预警阈值，可以继续推进实验。"
+        if spend_ratio >= 100:
+            alert_level = "danger"
+            alert_title = "预算已超支"
+            alert_message = "当前月度模型成本已超过预算，请立即收敛高成本实验。"
+        elif spend_ratio >= 80:
+            alert_level = "warning"
+            alert_title = "预算接近上限"
+            alert_message = "当前成本已超过 80% 预算，建议优先使用批量实验对比后再扩大运行。"
+        elif spend_ratio >= 50:
+            alert_level = "notice"
+            alert_title = "预算进入观察区"
+            alert_message = "当前成本已超过 50% 预算，建议开始关注模型成本趋势。"
 
         by_model: dict[str, dict[str, Any]] = {}
         for call in month_calls:
@@ -1168,4 +1233,12 @@ class CostAnalyticsService:
             "daily_cost_rows": [{"day": key, "cost_usd": round(value, 6)} for key, value in sorted(by_day.items())],
             "run_count": len(monthly_runs),
             "llm_call_count": len(month_calls),
+            "alert_level": alert_level,
+            "alert_title": alert_title,
+            "alert_message": alert_message,
+            "thresholds": [
+                {"label": "观察线", "ratio_percent": 50},
+                {"label": "预警线", "ratio_percent": 80},
+                {"label": "超支线", "ratio_percent": 100},
+            ],
         }

@@ -2,8 +2,8 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Runs</h1>
-    <p>Browse every workflow execution and open the detailed trace view.</p>
+    <h1>运行历史</h1>
+    <p>查看每个工作流实例的状态、执行配置和最新更新时间。</p>
   </div>
 </div>
 
@@ -11,26 +11,26 @@
   <table>
     <thead>
       <tr>
-        <th>Workflow</th>
-        <th>Status</th>
-        <th>Model</th>
+        <th>工作流</th>
+        <th>状态</th>
+        <th>模型</th>
         <th>Prompt</th>
-        <th>Routing</th>
-        <th>Updated</th>
+        <th>路由策略</th>
+        <th>更新时间</th>
       </tr>
     </thead>
     <tbody>
       {% for row in runs %}
       <tr>
         <td><a href="/runs/{{ row.id }}"><strong>{{ row.title }}</strong></a><div class="subtle">{{ row.objective }}</div></td>
-        <td><span class="badge status-{{ row.status }}">{{ row.status }}</span></td>
+        <td><span class="badge status-{{ row.status }}">{{ status_label(row.status) }}</span></td>
         <td>{{ row.model_name }}</td>
         <td>{{ row.prompt_profile_label }}</td>
         <td>{{ row.routing_policy_name }}</td>
         <td>{{ row.updated_at }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="subtle">No runs yet.</td></tr>
+      <tr><td colspan="6" class="subtle">还没有运行记录。</td></tr>
       {% endfor %}
     </tbody>
   </table>

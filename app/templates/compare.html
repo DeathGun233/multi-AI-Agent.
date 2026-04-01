@@ -2,30 +2,30 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Compare</h1>
-    <p>Compare model and prompt combinations based on historical workflow runs.</p>
+    <h1>方案对比</h1>
+    <p>基于历史运行结果，对不同模型、Prompt 和路由组合做聚合比较。</p>
   </div>
 </div>
 
 <div class="grid three">
-  <div class="card"><div class="subtle">Grouped combinations</div><div class="metric">{{ summary.rows|length }}</div></div>
-  <div class="card"><div class="subtle">Total runs</div><div class="metric">{{ summary.run_count }}</div></div>
-  <div class="card"><div class="subtle">Avg view</div><div class="metric">A/B</div><div class="subtle">Prompt and routing variants side by side</div></div>
+  <div class="card"><div class="subtle">组合数量</div><div class="metric">{{ summary.rows|length }}</div></div>
+  <div class="card"><div class="subtle">累计运行数</div><div class="metric">{{ summary.run_count }}</div></div>
+  <div class="card"><div class="subtle">对比视角</div><div class="metric">模型 / Prompt</div><div class="subtle">关注得分、成本、时延和接管率</div></div>
 </div>
 
 <section class="card" style="margin-top:18px;">
   <table>
     <thead>
       <tr>
-        <th>Workflow</th>
-        <th>Model</th>
+        <th>工作流</th>
+        <th>模型</th>
         <th>Prompt</th>
-        <th>Routing</th>
-        <th>Runs</th>
-        <th>Avg score</th>
-        <th>Avg latency</th>
-        <th>Avg cost</th>
-        <th>Handoff rate</th>
+        <th>路由</th>
+        <th>运行数</th>
+        <th>平均得分</th>
+        <th>平均时延</th>
+        <th>平均成本</th>
+        <th>接管率</th>
       </tr>
     </thead>
     <tbody>
@@ -37,12 +37,12 @@
         <td>{{ row.routing_policy_name }}</td>
         <td>{{ row.run_count }}</td>
         <td>{{ row.avg_score }}</td>
-        <td>{{ row.avg_latency_ms }} ms</td>
+        <td>{{ row.avg_latency_ms }} 毫秒</td>
         <td>${{ row.avg_cost_usd }}</td>
         <td>{{ row.handoff_rate }}%</td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="subtle">No run history yet.</td></tr>
+      <tr><td colspan="9" class="subtle">当前没有可对比的运行历史。</td></tr>
       {% endfor %}
     </tbody>
   </table>

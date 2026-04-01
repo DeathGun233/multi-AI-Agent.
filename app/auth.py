@@ -177,8 +177,8 @@ class AuthService:
                 for item in payload
             ]
         return [
-            UserSeed(username="admin", password="admin123", display_name="System Admin", role=ROLE_ADMIN),
-            UserSeed(username="reviewer", password="reviewer123", display_name="Review Owner", role=ROLE_REVIEWER),
-            UserSeed(username="operator", password="operator123", display_name="Workflow Operator", role=ROLE_OPERATOR),
-            UserSeed(username="viewer", password="viewer123", display_name="Read Only Viewer", role=ROLE_VIEWER),
+            UserSeed(username="admin", password="admin123", display_name="系统管理员", role=ROLE_ADMIN),
+            UserSeed(username="reviewer", password="reviewer123", display_name="审核负责人", role=ROLE_REVIEWER),
+            UserSeed(username="operator", password="operator123", display_name="流程运营", role=ROLE_OPERATOR),
+            UserSeed(username="viewer", password="viewer123", display_name="只读观察员", role=ROLE_VIEWER),
         ]

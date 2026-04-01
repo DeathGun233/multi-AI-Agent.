@@ -50,7 +50,7 @@ def test_dashboard_renders_prompt_and_routing_controls() -> None:
     login_as("operator", "operator123")
     response = client.get("/dashboard")
     assert response.status_code == 200
-    assert "Launch workflow" in response.text
+    assert "新建工作流" in response.text
     assert "routing-policy-id" in response.text
     assert "model-name" in response.text
 
@@ -94,7 +94,7 @@ def test_review_page_requires_reviewer_role() -> None:
     login_as("reviewer", "reviewer123")
     allowed = client.get("/reviews")
     assert allowed.status_code == 200
-    assert "Review Queue" in allowed.text
+    assert "审核中心" in allowed.text
 
 
 def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
@@ -105,8 +105,8 @@ def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
             "workflow_type": "sales_followup",
             "input_payload": {
                 "period": "2026-W13",
-                "region": "East",
-                "sales_reps": ["Wang Chen", "Li Xue"],
+                "region": "华东",
+                "sales_reps": ["王晨", "李雪"],
             },
             "model_name_override": "qwen-plus",
             "prompt_profile_id": "ops-deep-v1",
@@ -130,19 +130,19 @@ def test_waiting_human_reasons_do_not_include_auto_execute_copy() -> None:
             "status": "completed",
             "needs_human_review": False,
             "score": 0.92,
-            "reasons": ["Result is structured and can proceed automatically."],
+            "reasons": ["结果结构完整，可直接流转执行。"],
         },
         {
             "status": "waiting_human",
             "needs_human_review": True,
             "score": 0.65,
-            "reasons": ["A manager should confirm the follow-up strategy before execution."],
+            "reasons": ["跟进策略需要管理者确认后才能执行。"],
         },
     )
     assert merged["status"] == "waiting_human"
     assert merged["needs_human_review"] is True
-    assert all("automatically" not in reason.lower() for reason in merged["reasons"])
-    assert any("confirm" in reason.lower() or "review" in reason.lower() for reason in merged["reasons"])
+    assert all("直接流转" not in reason for reason in merged["reasons"])
+    assert any("确认" in reason or "审核" in reason for reason in merged["reasons"])
 
 
 def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
@@ -152,7 +152,7 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
         json={
             "workflow_type": "support_triage",
             "input_payload": {
-                "tickets": [{"customer": "Example Client", "message": "Production API errors are blocking a release. Need help today."}]
+                "tickets": [{"customer": "示例客户", "message": "生产接口持续报错，今天必须恢复，否则影响上线。"}]
             },
             "model_name_override": "qwen-turbo",
             "prompt_profile_id": "balanced-v1",
@@ -163,7 +163,7 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
     assert response.status_code == 200
     assert body["review"]["needs_human_review"] is True
     assert body["status"] == "waiting_human"
-    assert any("human review" in " ".join(body["review"]["reasons"]).lower() or "handoff" in " ".join(body["review"]["reasons"]).lower() for _ in [1])
+    assert any("人工" in reason or "接管" in reason for reason in body["review"]["reasons"])
 
     login_as("reviewer", "reviewer123")
     queue = client.get("/api/workflows/review-queue").json()
@@ -171,10 +171,10 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
 
     approved = client.post(
         f"/api/workflows/{body['id']}/review",
-        json={"approve": True, "comment": "On-call owner confirmed the response and rollout plan."},
+        json={"approve": True, "comment": "值班负责人已确认回复策略与处置方案。"},
     ).json()
     assert approved["status"] == "completed"
-    assert any("approved" in log["message"] for log in approved["logs"])
+    assert any("已通过" in log["message"] for log in approved["logs"])
 
 
 def test_detail_page_contains_ai_metrics_and_execution_profile() -> None:
@@ -184,8 +184,8 @@ def test_detail_page_contains_ai_metrics_and_execution_profile() -> None:
         json={
             "workflow_type": "meeting_minutes",
             "input_payload": {
-                "meeting_title": "Product Weekly",
-                "notes": "1. Zhang Min to finish competitor review by Friday. 2. Wang Chen to confirm pilot customers today.",
+                "meeting_title": "产品周会",
+                "notes": "1. 张敏本周五前完成竞品复盘。2. 王晨今天下班前确认试点客户名单。",
             },
             "model_name_override": "qwen3-max",
             "prompt_profile_id": "exec-brief-v2",
@@ -194,9 +194,9 @@ def test_detail_page_contains_ai_metrics_and_execution_profile() -> None:
     ).json()
     detail = client.get(f"/runs/{created['id']}")
     assert detail.status_code == 200
-    assert "Execution timeline" in detail.text
-    assert "Result JSON" in detail.text
-    assert "Review decision" in detail.text
+    assert "执行时间线" in detail.text
+    assert "结果 JSON" in detail.text
+    assert "审核与决策" in detail.text
 
 
 def test_prompt_profile_can_be_created_and_updated() -> None:
@@ -207,12 +207,12 @@ def test_prompt_profile_can_be_created_and_updated() -> None:
         json={
             "profile_id": profile_id,
             "base_profile_id": "ops-deep-v1",
-            "name": "Ops Lab",
+            "name": "运营实验版",
             "version": "v1",
-            "description": "Experimental prompt profile for sharper operational language.",
-            "analyst_instruction": "Stress root-cause analysis.",
-            "content_instruction": "Stress owners and deadlines.",
-            "reviewer_instruction": "Be conservative when risk is unclear.",
+            "description": "用于评估更强运营语言风格的实验方案。",
+            "analyst_instruction": "更强调根因分析。",
+            "content_instruction": "更强调责任人和截止时间。",
+            "reviewer_instruction": "风险不清晰时更偏向人工审核。",
         },
     )
     assert created.status_code == 200
@@ -223,12 +223,12 @@ def test_prompt_profile_can_be_created_and_updated() -> None:
         json={
             "profile_id": profile_id,
             "base_profile_id": "ops-deep-v1",
-            "name": "Ops Lab",
+            "name": "运营实验版",
             "version": "v2",
-            "description": "Experimental prompt profile for sharper operational language.",
-            "analyst_instruction": "Stress root-cause analysis and prioritization.",
-            "content_instruction": "Stress owners and deadlines.",
-            "reviewer_instruction": "Be conservative when risk is unclear.",
+            "description": "用于评估更强运营语言风格的实验方案。",
+            "analyst_instruction": "更强调根因分析和优先级。",
+            "content_instruction": "更强调责任人和截止时间。",
+            "reviewer_instruction": "风险不清晰时更偏向人工审核。",
         },
     )
     assert updated.status_code == 200
@@ -239,7 +239,7 @@ def test_compare_page_and_api_show_routing_experiments() -> None:
     login_as("viewer", "viewer123")
     page = client.get("/compare")
     assert page.status_code == 200
-    assert "Compare" in page.text
+    assert "方案对比" in page.text
 
     compare_api = client.get("/api/experiments/compare")
     body = compare_api.json()
@@ -252,7 +252,7 @@ def test_evaluation_run_and_listing_work() -> None:
     login_as("operator", "operator123")
     page = client.get("/evaluations")
     assert page.status_code == 200
-    assert "Evaluations" in page.text
+    assert "自动评测" in page.text
 
     response = client.post(
         "/evaluations/run",
@@ -278,7 +278,7 @@ def test_cost_summary_page_and_api_work() -> None:
     login_as("viewer", "viewer123")
     page = client.get("/costs")
     assert page.status_code == 200
-    assert "Cost Board" in page.text
+    assert "成本看板" in page.text
 
     summary = client.get("/api/costs/summary")
     body = summary.json()
@@ -286,6 +286,7 @@ def test_cost_summary_page_and_api_work() -> None:
     assert "total_cost_usd" in body
     assert "monthly_budget_usd" in body
     assert "model_rows" in body
+    assert "alert_title" in body
 
 
 def test_batch_experiment_run_and_listing_work() -> None:
@@ -297,22 +298,22 @@ def test_batch_experiment_run_and_listing_work() -> None:
             "workflow_type": "sales_followup",
             "input_payload": {
                 "period": "2026-W13",
-                "region": "East",
-                "sales_reps": ["Wang Chen", "Li Xue"],
+                "region": "华东",
+                "sales_reps": ["王晨", "李雪"],
                 "focus_metric": "conversion_rate",
             },
             "repeats": 1,
             "variants": [
                 {
                     "variant_id": "control",
-                    "label": "Control",
+                    "label": "对照组",
                     "model_name": "qwen-plus",
                     "prompt_profile_id": "balanced-v1",
                     "routing_policy_id": "balanced-router-v1",
                 },
                 {
                     "variant_id": "challenger",
-                    "label": "Challenger",
+                    "label": "挑战组",
                     "model_name": "qwen3-max",
                     "prompt_profile_id": "ops-deep-v1",
                     "routing_policy_id": "strict-review-v1",
@@ -324,6 +325,8 @@ def test_batch_experiment_run_and_listing_work() -> None:
     assert response.status_code == 200
     assert body["summary"]["variant_count"] == 2
     assert len(body["results"]) == 2
+    assert body["summary"]["champion"] is not None
+    assert any(row["is_champion"] for row in body["summary"]["rows"])
 
     listing = client.get("/api/batches").json()
     assert any(item["id"] == body["id"] for item in listing)
@@ -336,7 +339,7 @@ def test_feedback_review_creates_feedback_sample_and_feedback_dataset() -> None:
         json={
             "workflow_type": "support_triage",
             "input_payload": {
-                "tickets": [{"customer": "Example Client", "message": "Production API errors are blocking a release. Need help today."}]
+                "tickets": [{"customer": "示例客户", "message": "生产接口持续报错，今天必须恢复，否则影响上线。"}]
             },
             "model_name_override": "qwen-turbo",
             "prompt_profile_id": "balanced-v1",
@@ -347,12 +350,15 @@ def test_feedback_review_creates_feedback_sample_and_feedback_dataset() -> None:
     login_as("reviewer", "reviewer123")
     review_response = client.post(
         f"/api/workflows/{created['id']}/review",
-        json={"approve": True, "comment": "Reviewed by human. Keep escalation and incident wording."},
+        json={"approve": True, "comment": "人工复核通过，请保留升级与故障响应表述。"},
     )
     assert review_response.status_code == 200
 
     feedback_samples = client.get("/api/feedback-samples").json()
     assert any(item["source_run_id"] == created["id"] for item in feedback_samples)
+    matched = next(item for item in feedback_samples if item["source_run_id"] == created["id"])
+    assert "feedback_enrichment" in matched["output_snapshot"]
+    assert "scoring_rubric" in matched["output_snapshot"]["feedback_enrichment"]
 
     catalog = client.get("/api/experiments/catalog").json()
     assert any(item["dataset_id"] == "feedback-loop-v1" for item in catalog["datasets"])

@@ -2,8 +2,8 @@
 {% block content %}
 <div class="header">
   <div>
-    <h1>Prompt Profiles</h1>
-    <p>Built-in and custom prompt profiles used by Analyst, Content, and Reviewer agents.</p>
+    <h1>Prompt 方案</h1>
+    <p>查看内置与自定义 Prompt 版本，用于分析、内容生成和审核三个 Agent。</p>
   </div>
 </div>
 
@@ -11,11 +11,11 @@
   <table>
     <thead>
       <tr>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Version</th>
-        <th>Description</th>
-        <th>Type</th>
+        <th>方案 ID</th>
+        <th>名称</th>
+        <th>版本</th>
+        <th>说明</th>
+        <th>类型</th>
       </tr>
     </thead>
     <tbody>
@@ -25,10 +25,10 @@
         <td>{{ item.name }}</td>
         <td>{{ item.version }}</td>
         <td>{{ item.description }}</td>
-        <td>{% if item.is_builtin %}builtin{% else %}custom{% endif %}</td>
+        <td>{% if item.is_builtin %}内置{% else %}自定义{% endif %}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="subtle">No prompt profiles found.</td></tr>
+      <tr><td colspan="5" class="subtle">当前没有 Prompt 方案。</td></tr>
       {% endfor %}
     </tbody>
   </table>
