@@ -8,7 +8,9 @@
   <div class="toolbar">
     <span class="badge status-{{ run.status.value }}">{{ status_label(run.status.value) }}</span>
     {% if run.review %}<span class="badge">评分 {{ "%.2f"|format(run.review.score) }}</span>{% endif %}
-    <a class="btn ghost" href="/runs/{{ run.id }}/export">导出报告</a>
+    <a class="btn ghost" href="/runs/{{ run.id }}/export?format=markdown">导出 Markdown</a>
+    <a class="btn ghost" href="/runs/{{ run.id }}/export?format=html">导出 HTML</a>
+    <a class="btn ghost" href="/runs/{{ run.id }}/export?format=pdf">导出 PDF</a>
     {% if capabilities.can_run or capabilities.can_review or capabilities.can_admin %}
     <form method="post" action="/runs/{{ run.id }}/delete" onsubmit="return confirm('确认删除这条工作流及其反馈样本吗？');" style="margin:0;">
       <button type="submit" class="secondary">删除该工作流</button>

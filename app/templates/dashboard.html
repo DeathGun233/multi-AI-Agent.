@@ -3,14 +3,14 @@
 <div class="header">
   <div>
     <h1>总览面板</h1>
-    <p>选择工作流、模型与 Prompt 方案，必要时填写真实数据源表单后，直接发起一次完整运行。</p>
+    <p>选择工作流、模型与 Prompt 方案。客服工单工作流支持直接填写真实数据源配置，并在提交前做前端校验提示。</p>
   </div>
 </div>
 
 <div class="grid two">
   <section class="card">
     <h2>新建工作流</h2>
-    <div class="subtle">当前只有“客服工单智能分流”会展示真实数据源前端配置表单。</div>
+    <div class="subtle">真实数据源表单只在“客服工单智能分流”下显示，提交时会自动写入输入 JSON 的 `data_source` 字段。</div>
     <form id="run-form" class="stack" style="margin-top:16px;">
       <label>工作流模板
         <select id="workflow-type">
@@ -43,7 +43,7 @@
 
       <div id="external-source-panel" class="card" style="display:none;">
         <h3>真实数据源配置</h3>
-        <div class="subtle">提交时会自动写入输入 JSON 的 `data_source` 字段，替换默认 mock 工单。</div>
+        <div class="subtle">可选公共数据源：GitHub Issues、NYC 311、Stack Overflow、Hacker News。</div>
         <div class="stack" style="margin-top:12px;">
           <label>数据源类型
             <select id="data-source-provider">
@@ -52,6 +52,7 @@
               {% endfor %}
             </select>
           </label>
+          <div class="field-tip" id="provider-description"></div>
 
           <div id="github-source-fields" class="stack">
             <label>仓库
@@ -84,6 +85,44 @@
               </label>
             </div>
           </div>
+
+          <div id="stackoverflow-source-fields" class="stack" style="display:none;">
+            <label>标签
+              <input id="so-tagged" value="fastapi" placeholder="例如 fastapi">
+            </label>
+            <div class="filter-grid">
+              <label>排序
+                <select id="so-sort">
+                  <option value="votes">votes</option>
+                  <option value="activity">activity</option>
+                  <option value="creation">creation</option>
+                </select>
+              </label>
+              <label>条数
+                <input id="so-limit" type="number" min="1" max="20" value="5">
+              </label>
+            </div>
+          </div>
+
+          <div id="hn-source-fields" class="stack" style="display:none;">
+            <label>检索词
+              <input id="hn-query" value="fastapi" placeholder="例如 fastapi">
+            </label>
+            <div class="filter-grid">
+              <label>标签
+                <select id="hn-tags">
+                  <option value="story">story</option>
+                  <option value="comment">comment</option>
+                  <option value="story,comment">story,comment</option>
+                </select>
+              </label>
+              <label>条数
+                <input id="hn-limit" type="number" min="1" max="20" value="5">
+              </label>
+            </div>
+          </div>
+
+          <div class="field-error" id="data-source-error"></div>
         </div>
       </div>
 
@@ -146,13 +185,21 @@
 </section>
 
 <script>
+  const providerMeta = {{ external_source_options | tojson }};
   const workflowSelect = document.getElementById("workflow-type");
   const payloadInput = document.getElementById("input-payload");
   const resultBox = document.getElementById("run-result");
   const externalSourcePanel = document.getElementById("external-source-panel");
   const dataSourceProvider = document.getElementById("data-source-provider");
-  const githubSourceFields = document.getElementById("github-source-fields");
-  const nycSourceFields = document.getElementById("nyc-source-fields");
+  const providerDescription = document.getElementById("provider-description");
+  const sourceError = document.getElementById("data-source-error");
+
+  const panels = {
+    github_issues: document.getElementById("github-source-fields"),
+    nyc_311: document.getElementById("nyc-source-fields"),
+    stack_overflow: document.getElementById("stackoverflow-source-fields"),
+    hacker_news: document.getElementById("hn-source-fields")
+  };
 
   function syncPayload() {
     const option = workflowSelect.options[workflowSelect.selectedIndex];
@@ -169,25 +216,68 @@
 
   function toggleDataSourceFields() {
     const provider = dataSourceProvider.value;
-    githubSourceFields.style.display = provider === "github_issues" ? "grid" : "none";
-    nycSourceFields.style.display = provider === "nyc_311" ? "grid" : "none";
+    Object.entries(panels).forEach(([key, panel]) => {
+      panel.style.display = key === provider ? "grid" : "none";
+    });
+    const meta = providerMeta.find((item) => item.provider === provider);
+    providerDescription.textContent = meta ? meta.description : "";
+    sourceError.textContent = "";
+  }
+
+  function requireNonEmpty(value, message) {
+    if (!String(value || "").trim()) {
+      throw new Error(message);
+    }
+  }
+
+  function requireRange(value, min, max, message) {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < min || num > max) {
+      throw new Error(message);
+    }
+    return num;
   }
 
   function buildDataSourceConfig() {
     const provider = dataSourceProvider.value;
     if (provider === "github_issues") {
+      const repo = document.getElementById("github-repo").value.trim();
+      requireNonEmpty(repo, "请填写 GitHub 仓库，例如 fastapi/fastapi。");
+      if (!repo.includes("/")) {
+        throw new Error("GitHub 仓库格式必须为 owner/repo。");
+      }
       return {
         provider,
-        repo: document.getElementById("github-repo").value.trim(),
+        repo,
         state: document.getElementById("github-state").value,
-        per_page: Number(document.getElementById("github-per-page").value || 5)
+        per_page: requireRange(document.getElementById("github-per-page").value, 1, 20, "GitHub 条数必须在 1 到 20 之间。")
       };
     }
+    if (provider === "nyc_311") {
+      return {
+        provider,
+        complaint_type: document.getElementById("nyc-complaint-type").value.trim(),
+        borough: document.getElementById("nyc-borough").value.trim(),
+        limit: requireRange(document.getElementById("nyc-limit").value, 1, 20, "NYC 311 条数必须在 1 到 20 之间。")
+      };
+    }
+    if (provider === "stack_overflow") {
+      const tagged = document.getElementById("so-tagged").value.trim();
+      requireNonEmpty(tagged, "请填写 Stack Overflow 标签。");
+      return {
+        provider,
+        tagged,
+        sort: document.getElementById("so-sort").value,
+        limit: requireRange(document.getElementById("so-limit").value, 1, 20, "Stack Overflow 条数必须在 1 到 20 之间。")
+      };
+    }
+    const query = document.getElementById("hn-query").value.trim();
+    requireNonEmpty(query, "请填写 Hacker News 检索词。");
     return {
       provider,
-      complaint_type: document.getElementById("nyc-complaint-type").value.trim(),
-      borough: document.getElementById("nyc-borough").value.trim(),
-      limit: Number(document.getElementById("nyc-limit").value || 6)
+      query,
+      tags: document.getElementById("hn-tags").value,
+      limit: requireRange(document.getElementById("hn-limit").value, 1, 20, "Hacker News 条数必须在 1 到 20 之间。")
     };
   }
 
@@ -197,6 +287,7 @@
 
   document.getElementById("run-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    sourceError.textContent = "";
     resultBox.textContent = "正在启动工作流...";
     try {
       const inputPayload = JSON.parse(payloadInput.value || "{}");
@@ -220,7 +311,11 @@
       }
       resultBox.innerHTML = `工作流已创建，<a href="/runs/${body.id}">点击查看详情</a>`;
     } catch (error) {
-      resultBox.textContent = error.message;
+      const message = error.message || "请求失败";
+      if (workflowSelect.value === "support_triage") {
+        sourceError.textContent = message;
+      }
+      resultBox.textContent = message;
     }
   });
 </script>

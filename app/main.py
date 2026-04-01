@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -19,6 +19,14 @@ from app.models import (
     ReviewSubmission,
     WorkflowRequest,
     WorkflowRun,
+)
+from app.reporting import (
+    build_evaluation_html,
+    build_evaluation_markdown,
+    build_evaluation_pdf,
+    build_workflow_html,
+    build_workflow_markdown,
+    build_workflow_pdf,
 )
 from app.repository import WorkflowRepository
 from app.services import BatchExperimentService, CostAnalyticsService, EvaluationService, WorkflowEngine
@@ -139,8 +147,6 @@ def _build_llm_summary(run: WorkflowRun) -> dict[str, object]:
 
 
 def _build_timeline(run: WorkflowRun) -> list[dict]:
-    if not run.logs:
-        return []
     points: list[dict] = []
     for index, log in enumerate(run.logs):
         next_timestamp = run.logs[index + 1].timestamp if index + 1 < len(run.logs) else run.updated_at
@@ -225,6 +231,11 @@ def _build_evaluation_rows(evaluations: list[object]) -> list[dict[str, object]]
         "result_completeness": "结果完整度",
         "review_alignment": "审核一致性",
     }
+    status_labels = {
+        "completed": "已完成",
+        "waiting_human": "待人工审核",
+        "failed": "已失败",
+    }
     rows: list[dict[str, object]] = []
     for item in evaluations:
         candidate_dimensions = item.summary.get("candidate_dimensions", {})
@@ -242,93 +253,78 @@ def _build_evaluation_rows(evaluations: list[object]) -> list[dict[str, object]]
                     "delta": round(candidate_score - baseline_score, 1),
                 }
             )
+        case_rows = []
+        for case in item.case_results:
+            case_dimension_rows = []
+            for key in dict.fromkeys([*case.get("candidate_dimensions", {}).keys(), *case.get("baseline_dimensions", {}).keys()]):
+                case_dimension_rows.append(
+                    {
+                        "label": dimension_labels.get(key, key),
+                        "candidate_score": round(float(case.get("candidate_dimensions", {}).get(key, 0.0)) * 100, 1),
+                        "baseline_score": round(float(case.get("baseline_dimensions", {}).get(key, 0.0)) * 100, 1),
+                    }
+                )
+            case_rows.append(
+                {
+                    "case_id": case["case_id"],
+                    "title": case["title"],
+                    "candidate_status_label": status_labels.get(case.get("candidate_status", "completed"), case.get("candidate_status", "completed")),
+                    "baseline_status_label": status_labels.get(case.get("baseline_status", "completed"), case.get("baseline_status", "completed")),
+                    "candidate_score": round(float(case.get("candidate_score", 0.0)) * 100, 1),
+                    "baseline_score": round(float(case.get("baseline_score", 0.0)) * 100, 1),
+                    "candidate_metrics": case.get("candidate_metrics", {}),
+                    "baseline_metrics": case.get("baseline_metrics", {}),
+                    "dimension_rows": case_dimension_rows,
+                }
+            )
         rows.append(
             {
                 "id": item.id,
                 "dataset_name": item.dataset_name,
                 "candidate_label": f"{item.candidate_profile.primary_model_name} / {item.candidate_profile.prompt_profile.name}",
                 "baseline_label": f"{item.baseline_profile.primary_model_name} / {item.baseline_profile.prompt_profile.name}",
-                "candidate_avg_score": round(float(item.summary.get('candidate_avg_score', 0.0)) * 100, 1),
-                "baseline_avg_score": round(float(item.summary.get('baseline_avg_score', 0.0)) * 100, 1),
-                "score_delta": round(float(item.summary.get('score_delta', 0.0)) * 100, 1),
+                "candidate_avg_score": round(float(item.summary.get("candidate_avg_score", 0.0)) * 100, 1),
+                "baseline_avg_score": round(float(item.summary.get("baseline_avg_score", 0.0)) * 100, 1),
+                "score_delta": round(float(item.summary.get("score_delta", 0.0)) * 100, 1),
                 "case_count": item.summary.get("case_count", len(item.case_results)),
                 "dimension_rows": dimension_rows,
+                "case_rows": case_rows,
                 "created_at": item.created_at.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                "sort_key": item.created_at,
             }
         )
+    rows.sort(key=lambda row: row["sort_key"], reverse=True)
     return rows
 
 
-def _workflow_export_markdown(run: WorkflowRun) -> str:
-    llm_summary = _build_llm_summary(run)
-    lines = [
-        f"# {workflow_label(run.workflow_type.value)}",
-        "",
-        "## 基本信息",
-        f"- 运行 ID：{run.id}",
-        f"- 状态：{status_label(run.status.value)}",
-        f"- 当前节点：{run.current_step}",
-        f"- 目标：{run.objective}",
-        f"- 创建时间：{run.created_at.astimezone().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"- 更新时间：{run.updated_at.astimezone().strftime('%Y-%m-%d %H:%M:%S')}",
-        "",
-        "## AI 指标",
-        f"- 模型调用次数：{llm_summary['total_requests']}",
-        f"- 累计 Tokens：{llm_summary['total_tokens']}",
-        f"- 平均耗时：{llm_summary['avg_latency_ms']} 毫秒",
-        f"- 累计成本：${llm_summary['total_cost_usd']}",
-        "",
-        "## 审核与决策",
-    ]
-    if run.review:
-        lines.extend(
-            [
-                f"- 审核状态：{status_label(run.review.status.value)}",
-                f"- 是否需要人工审核：{'是' if run.review.needs_human_review else '否'}",
-                f"- 评分：{run.review.score:.2f}",
-                "- 审核理由：",
-            ]
-        )
-        lines.extend([f"  - {item}" for item in run.review.reasons])
-    else:
-        lines.append("- 暂无审核结果")
-    lines.extend(
-        [
-            "",
-            "## 结果 JSON",
-            "```json",
-            _pretty_json(run.result),
-            "```",
-            "",
-            "## 执行日志",
-        ]
+def _build_evaluation_trend_rows(evaluations: list[dict[str, object]]) -> list[dict[str, object]]:
+    trend_rows = []
+    history = list(reversed(evaluations[:8]))
+    max_score = max(
+        [max(float(item["candidate_avg_score"]), float(item["baseline_avg_score"])) for item in history],
+        default=100.0,
     )
-    for log in run.logs:
-        lines.append(f"- [{log.timestamp.astimezone().strftime('%H:%M:%S')}] {log.agent}：{log.message}")
-    return "\n".join(lines)
-
-
-def _evaluation_export_markdown(item: dict[str, object]) -> str:
-    lines = [
-        f"# {item['dataset_name']} 评测报告",
-        "",
-        "## 方案信息",
-        f"- 候选方案：{item['candidate_label']}",
-        f"- 基线方案：{item['baseline_label']}",
-        f"- 样本数：{item['case_count']}",
-        "",
-        "## 总体得分",
-        f"- 候选平均分：{item['candidate_avg_score']}",
-        f"- 基线平均分：{item['baseline_avg_score']}",
-        f"- 分数差值：{item['score_delta']}",
-        "",
-        "## 多维评分",
-    ]
-    for row in item["dimension_rows"]:
-        lines.append(
-            f"- {row['label']}：候选 {row['candidate_score']} / 基线 {row['baseline_score']} / 差值 {row['delta']}"
+    scale = max(max_score, 100.0)
+    for index, item in enumerate(history, start=1):
+        trend_rows.append(
+            {
+                "label": f"第 {index} 次 / {item['dataset_name']}",
+                "created_at": item["created_at"],
+                "candidate_avg_score": item["candidate_avg_score"],
+                "baseline_avg_score": item["baseline_avg_score"],
+                "candidate_width": round(float(item["candidate_avg_score"]) / scale * 100, 1),
+                "baseline_width": round(float(item["baseline_avg_score"]) / scale * 100, 1),
+            }
         )
-    return "\n".join(lines)
+    return trend_rows
+
+
+def _export_response(content: str | bytes, *, filename: str, media_type: str) -> Response:
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _common_context(request: Request, user: AuthUser, active_page: str, **kwargs: object) -> dict[str, object]:
@@ -432,6 +428,8 @@ def dashboard(request: Request):
             external_source_options=[
                 {"provider": "github_issues", "label": "GitHub Issues", "description": "读取公开仓库 Issue 作为真实客服工单"},
                 {"provider": "nyc_311", "label": "NYC 311", "description": "读取纽约 311 公共投诉数据作为真实工单"},
+                {"provider": "stack_overflow", "label": "Stack Overflow", "description": "读取 Stack Overflow 公开问题作为技术支持工单"},
+                {"provider": "hacker_news", "label": "Hacker News", "description": "读取 Hacker News 检索结果作为外部反馈样本"},
             ],
         ),
     )
@@ -493,17 +491,35 @@ def run_detail_page(run_id: str, request: Request):
 
 
 @app.get("/runs/{run_id}/export")
-def export_run_report(run_id: str, request: Request):
+def export_run_report(
+    run_id: str,
+    request: Request,
+    format: str = Query("markdown", pattern="^(markdown|html|pdf)$"),
+):
     user = _page_user(request)
     if user is None:
         return _redirect_to_login(request)
     run = engine.get(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="workflow run not found")
-    return Response(
-        content=_workflow_export_markdown(run),
+    llm_summary = _build_llm_summary(run)
+    result_json = _pretty_json(run.result)
+    if format == "html":
+        return _export_response(
+            build_workflow_html(run, llm_summary, result_json),
+            filename=f"workflow-{run.id}.html",
+            media_type="text/html; charset=utf-8",
+        )
+    if format == "pdf":
+        return _export_response(
+            build_workflow_pdf(run, llm_summary, result_json),
+            filename=f"workflow-{run.id}.pdf",
+            media_type="application/pdf",
+        )
+    return _export_response(
+        build_workflow_markdown(run, llm_summary, result_json),
+        filename=f"workflow-{run.id}.md",
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="workflow-{run.id}.md"'},
     )
 
 
@@ -563,6 +579,7 @@ def evaluations_page(request: Request):
             datasets=evaluation_service.list_datasets(),
             evaluations=evaluation_rows,
             latest_evaluation=evaluation_rows[0] if evaluation_rows else None,
+            trend_rows=_build_evaluation_trend_rows(evaluation_rows),
             models=engine.list_model_options(),
             prompt_profiles=engine.list_prompt_profiles(),
             routing_policies=engine.list_routing_policies(),
@@ -597,7 +614,11 @@ def evaluation_run_submit(
 
 
 @app.get("/evaluations/{evaluation_id}/export")
-def export_evaluation_report(evaluation_id: str, request: Request):
+def export_evaluation_report(
+    evaluation_id: str,
+    request: Request,
+    format: str = Query("markdown", pattern="^(markdown|html|pdf)$"),
+):
     user = _page_user(request)
     if user is None:
         return _redirect_to_login(request)
@@ -605,10 +626,22 @@ def export_evaluation_report(evaluation_id: str, request: Request):
     if evaluation is None:
         raise HTTPException(status_code=404, detail="evaluation not found")
     row = _build_evaluation_rows([evaluation])[0]
-    return Response(
-        content=_evaluation_export_markdown(row),
+    if format == "html":
+        return _export_response(
+            build_evaluation_html(row),
+            filename=f"evaluation-{evaluation.id}.html",
+            media_type="text/html; charset=utf-8",
+        )
+    if format == "pdf":
+        return _export_response(
+            build_evaluation_pdf(row),
+            filename=f"evaluation-{evaluation.id}.pdf",
+            media_type="application/pdf",
+        )
+    return _export_response(
+        build_evaluation_markdown(row),
+        filename=f"evaluation-{evaluation.id}.md",
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="evaluation-{evaluation.id}.md"'},
     )
 
 
@@ -700,11 +733,7 @@ def delete_workflow(run_id: str, request: Request):
 def bulk_delete_workflows(request: Request, payload: BulkDeleteRequest):
     auth_service.require_roles(request, ROLE_OPERATOR, ROLE_REVIEWER, ROLE_ADMIN)
     deleted_ids = engine.delete_runs(payload.run_ids)
-    return {
-        "ok": True,
-        "deleted_count": len(deleted_ids),
-        "deleted_run_ids": deleted_ids,
-    }
+    return {"ok": True, "deleted_count": len(deleted_ids), "deleted_run_ids": deleted_ids}
 
 
 @app.get("/api/workflows/review-queue")

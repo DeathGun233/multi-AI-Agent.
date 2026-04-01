@@ -30,10 +30,16 @@ class ExternalDataService:
             return self._load_github_issues(source)
         if provider == "nyc_311":
             return self._load_nyc_311(source)
+        if provider == "stack_overflow":
+            return self._load_stack_overflow(source)
+        if provider == "hacker_news":
+            return self._load_hacker_news(source)
         raise ExternalDataError(f"unsupported provider: {provider}")
 
     def _load_github_issues(self, source: dict[str, Any]) -> ExternalTicketBatch:
-        repo = str(source.get("repo", "fastapi/fastapi")).strip()
+        repo = str(source.get("repo", "")).strip() or "fastapi/fastapi"
+        if "/" not in repo:
+            raise ExternalDataError("GitHub 仓库格式必须是 owner/repo")
         state = str(source.get("state", "open")).strip() or "open"
         per_page = max(1, min(int(source.get("per_page", 5)), 20))
         params = urlencode({"state": state, "per_page": per_page})
@@ -58,11 +64,7 @@ class ExternalDataService:
         return ExternalTicketBatch(
             provider="github_issues",
             records=tickets,
-            summary={
-                "repo": repo,
-                "state": state,
-                "ticket_count": len(tickets),
-            },
+            summary={"repo": repo, "state": state, "ticket_count": len(tickets)},
         )
 
     def _load_nyc_311(self, source: dict[str, Any]) -> ExternalTicketBatch:
@@ -92,14 +94,11 @@ class ExternalDataService:
         for item in payload:
             descriptor = item.get("descriptor", "")
             complaint = item.get("complaint_type", "")
-            message = f"{complaint} - {descriptor}".strip(" -")
-            address = item.get("incident_address", "")
-            borough_name = item.get("borough", "")
             tickets.append(
                 {
                     "customer": item.get("agency", "NYC 311"),
-                    "message": message,
-                    "body": f"{borough_name} {address}".strip(),
+                    "message": f"{complaint} - {descriptor}".strip(" -"),
+                    "body": f"{item.get('borough', '')} {item.get('incident_address', '')}".strip(),
                     "source_id": item.get("unique_key", ""),
                     "source_url": "https://data.cityofnewyork.us/resource/erm2-nwe9",
                     "status": item.get("status", ""),
@@ -108,11 +107,70 @@ class ExternalDataService:
         return ExternalTicketBatch(
             provider="nyc_311",
             records=tickets,
-            summary={
-                "borough": borough,
-                "complaint_type": complaint_type,
-                "ticket_count": len(tickets),
-            },
+            summary={"borough": borough, "complaint_type": complaint_type, "ticket_count": len(tickets)},
+        )
+
+    def _load_stack_overflow(self, source: dict[str, Any]) -> ExternalTicketBatch:
+        tagged = str(source.get("tagged", "")).strip() or "fastapi"
+        sort = str(source.get("sort", "votes")).strip() or "votes"
+        limit = max(1, min(int(source.get("limit", 5)), 20))
+        params = urlencode(
+            {
+                "order": "desc",
+                "sort": sort,
+                "site": "stackoverflow",
+                "tagged": tagged,
+                "pagesize": limit,
+                "filter": "default",
+            }
+        )
+        url = f"https://api.stackexchange.com/2.3/questions?{params}"
+        payload = self._fetch_json(url)
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise ExternalDataError("stack overflow response is invalid")
+        tickets = []
+        for item in payload["items"]:
+            tickets.append(
+                {
+                    "customer": "Stack Overflow",
+                    "message": item.get("title", ""),
+                    "body": f"标签：{', '.join(item.get('tags', []))}",
+                    "source_id": f"question#{item.get('question_id', '')}",
+                    "source_url": item.get("link", ""),
+                    "status": "answered" if item.get("is_answered") else "unanswered",
+                }
+            )
+        return ExternalTicketBatch(
+            provider="stack_overflow",
+            records=tickets,
+            summary={"tagged": tagged, "sort": sort, "ticket_count": len(tickets)},
+        )
+
+    def _load_hacker_news(self, source: dict[str, Any]) -> ExternalTicketBatch:
+        query = str(source.get("query", "")).strip() or "fastapi"
+        limit = max(1, min(int(source.get("limit", 5)), 20))
+        tags = str(source.get("tags", "story")).strip() or "story"
+        params = urlencode({"query": query, "tags": tags, "hitsPerPage": limit})
+        url = f"https://hn.algolia.com/api/v1/search_by_date?{params}"
+        payload = self._fetch_json(url)
+        if not isinstance(payload, dict) or not isinstance(payload.get("hits"), list):
+            raise ExternalDataError("hacker news response is invalid")
+        tickets = []
+        for item in payload["hits"]:
+            tickets.append(
+                {
+                    "customer": "Hacker News",
+                    "message": item.get("title") or item.get("story_title") or "",
+                    "body": item.get("comment_text") or "",
+                    "source_id": item.get("objectID", ""),
+                    "source_url": item.get("url") or f"https://news.ycombinator.com/item?id={item.get('objectID', '')}",
+                    "status": tags,
+                }
+            )
+        return ExternalTicketBatch(
+            provider="hacker_news",
+            records=tickets,
+            summary={"query": query, "tags": tags, "ticket_count": len(tickets)},
         )
 
     def _fetch_json(self, url: str) -> Any:

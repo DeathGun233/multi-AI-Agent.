@@ -90,14 +90,16 @@ def test_login_page_and_session_endpoint() -> None:
     assert session.json()["capabilities"]["can_view"] is True
 
 
-def test_dashboard_renders_run_controls_and_real_data_source_form() -> None:
+def test_dashboard_renders_all_real_data_source_options() -> None:
     login_as("operator", "operator123")
     response = client.get("/dashboard")
     assert response.status_code == 200
     assert "新建工作流" in response.text
     assert "真实数据源配置" in response.text
-    assert "routing-policy-id" in response.text
-    assert "model-name" in response.text
+    assert "GitHub Issues" in response.text
+    assert "NYC 311" in response.text
+    assert "Stack Overflow" in response.text
+    assert "Hacker News" in response.text
 
 
 def test_health_endpoint_exposes_backend_shape() -> None:
@@ -190,21 +192,27 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
     assert any("已通过" in log["message"] for log in approved["logs"])
 
 
-def test_run_detail_page_contains_export_button_and_metrics() -> None:
+def test_run_detail_page_contains_all_export_formats() -> None:
     created = create_sales_run()
     detail = client.get(f"/runs/{created['id']}")
     assert detail.status_code == 200
     assert "执行时间线" in detail.text
-    assert "结果 JSON" in detail.text
-    assert "导出报告" in detail.text
+    assert "导出 Markdown" in detail.text
+    assert "导出 HTML" in detail.text
+    assert "导出 PDF" in detail.text
 
 
-def test_workflow_export_endpoint_returns_markdown() -> None:
+def test_workflow_export_endpoint_supports_markdown_html_and_pdf() -> None:
     created = create_sales_run()
-    response = client.get(f"/runs/{created['id']}/export")
-    assert response.status_code == 200
-    assert "text/markdown" in response.headers["content-type"]
-    assert "销售分析与跟进计划" in response.text
+    markdown = client.get(f"/runs/{created['id']}/export?format=markdown")
+    html = client.get(f"/runs/{created['id']}/export?format=html")
+    pdf = client.get(f"/runs/{created['id']}/export?format=pdf")
+    assert markdown.status_code == 200
+    assert html.status_code == 200
+    assert pdf.status_code == 200
+    assert "text/markdown" in markdown.headers["content-type"]
+    assert "text/html" in html.headers["content-type"]
+    assert "application/pdf" in pdf.headers["content-type"]
 
 
 def test_runs_page_supports_status_and_workflow_filters() -> None:
@@ -264,7 +272,7 @@ def test_compare_page_and_api_show_routing_experiments() -> None:
     assert isinstance(body["rows"], list)
 
 
-def test_evaluation_run_page_charts_and_export_work() -> None:
+def test_evaluation_run_page_supports_trend_and_drilldown_and_exports() -> None:
     login_as("operator", "operator123")
     page = client.get("/evaluations")
     assert page.status_code == 200
@@ -284,15 +292,18 @@ def test_evaluation_run_page_charts_and_export_work() -> None:
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert "最新评测图表" in response.text
-    assert "候选平均分" in response.text
+    assert "评测趋势" in response.text
+    assert "查看单案例明细" in response.text
 
     evaluations = client.get("/api/evaluations").json()
     assert len(evaluations) >= 1
     evaluation_id = evaluations[0]["id"]
-    export_response = client.get(f"/evaluations/{evaluation_id}/export")
-    assert export_response.status_code == 200
-    assert "text/markdown" in export_response.headers["content-type"]
+    markdown = client.get(f"/evaluations/{evaluation_id}/export?format=markdown")
+    html = client.get(f"/evaluations/{evaluation_id}/export?format=html")
+    pdf = client.get(f"/evaluations/{evaluation_id}/export?format=pdf")
+    assert "text/markdown" in markdown.headers["content-type"]
+    assert "text/html" in html.headers["content-type"]
+    assert "application/pdf" in pdf.headers["content-type"]
 
 
 def test_batch_experiment_run_and_listing_work() -> None:

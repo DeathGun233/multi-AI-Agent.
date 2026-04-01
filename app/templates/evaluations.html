@@ -3,7 +3,7 @@
 <div class="header">
   <div>
     <h1>自动评测</h1>
-    <p>发起候选方案与基线方案的对比评测，并用图表展示多维评分，不再只看文本分数。</p>
+    <p>支持历史趋势视图、单案例明细 drill-down，以及 Markdown / HTML / PDF 三种格式的评测报告导出。</p>
   </div>
 </div>
 
@@ -90,6 +90,33 @@
   </section>
 </div>
 
+{% if trend_rows %}
+<section class="card" style="margin-top:18px;">
+  <h2>评测趋势</h2>
+  <div class="subtle">最近 {{ trend_rows|length }} 次评测的候选方案与基线方案平均分变化。</div>
+  <div class="stack" style="margin-top:16px;">
+    {% for row in trend_rows %}
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;">
+        <strong>{{ row.label }}</strong>
+        <span class="subtle">{{ row.created_at }}</span>
+      </div>
+      <div class="bar-group" style="margin-top:12px;">
+        <div class="bar-row">
+          <div class="bar-label"><span>候选方案</span><span>{{ row.candidate_avg_score }}</span></div>
+          <div class="bar-track"><div class="bar-fill-candidate" style="width: {{ row.candidate_width }}%;"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>基线方案</span><span>{{ row.baseline_avg_score }}</span></div>
+          <div class="bar-track"><div class="bar-fill-baseline" style="width: {{ row.baseline_width }}%;"></div></div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {% if latest_evaluation %}
 <section class="card" style="margin-top:18px;">
   <div class="toolbar" style="justify-content:space-between;">
@@ -97,7 +124,11 @@
       <h2 style="margin-bottom:6px;">最新评测图表</h2>
       <div class="subtle">{{ latest_evaluation.dataset_name }} / {{ latest_evaluation.created_at }}</div>
     </div>
-    <a class="btn ghost" href="/evaluations/{{ latest_evaluation.id }}/export">导出报告</a>
+    <div class="toolbar">
+      <a class="btn ghost" href="/evaluations/{{ latest_evaluation.id }}/export?format=markdown">导出 Markdown</a>
+      <a class="btn ghost" href="/evaluations/{{ latest_evaluation.id }}/export?format=html">导出 HTML</a>
+      <a class="btn ghost" href="/evaluations/{{ latest_evaluation.id }}/export?format=pdf">导出 PDF</a>
+    </div>
   </div>
   <div class="grid three" style="margin-top:16px;">
     <div class="card">
@@ -144,7 +175,11 @@
           <strong>{{ item.dataset_name }}</strong>
           <div class="subtle">{{ item.created_at }}</div>
         </div>
-        <a class="btn ghost" href="/evaluations/{{ item.id }}/export">导出报告</a>
+        <div class="toolbar">
+          <a class="btn ghost" href="/evaluations/{{ item.id }}/export?format=markdown">Markdown</a>
+          <a class="btn ghost" href="/evaluations/{{ item.id }}/export?format=html">HTML</a>
+          <a class="btn ghost" href="/evaluations/{{ item.id }}/export?format=pdf">PDF</a>
+        </div>
       </div>
       <div class="subtle" style="margin-top:8px;">候选方案：{{ item.candidate_label }}</div>
       <div class="subtle">基线方案：{{ item.baseline_label }}</div>
@@ -180,6 +215,71 @@
         </div>
         {% endfor %}
       </div>
+
+      <details style="margin-top:14px;">
+        <summary>查看单案例明细</summary>
+        <div class="stack" style="margin-top:12px;">
+          {% for case in item.case_rows %}
+          <div class="card">
+            <div class="toolbar" style="justify-content:space-between;">
+              <strong>{{ case.title }}</strong>
+              <span class="badge">{{ case.candidate_status_label }}</span>
+            </div>
+            <div class="grid three" style="margin-top:12px;">
+              <div class="card">
+                <div class="subtle">候选得分</div>
+                <div class="metric">{{ case.candidate_score }}</div>
+              </div>
+              <div class="card">
+                <div class="subtle">基线得分</div>
+                <div class="metric">{{ case.baseline_score }}</div>
+              </div>
+              <div class="card">
+                <div class="subtle">状态对比</div>
+                <div class="subtle">候选：{{ case.candidate_status_label }}</div>
+                <div class="subtle">基线：{{ case.baseline_status_label }}</div>
+              </div>
+            </div>
+            <div class="grid two" style="margin-top:12px;">
+              {% for row in case.dimension_rows %}
+              <div class="card">
+                <strong>{{ row.label }}</strong>
+                <div class="bar-group" style="margin-top:12px;">
+                  <div class="bar-row">
+                    <div class="bar-label"><span>候选</span><span>{{ row.candidate_score }}</span></div>
+                    <div class="bar-track"><div class="bar-fill-candidate" style="width: {{ row.candidate_score }}%;"></div></div>
+                  </div>
+                  <div class="bar-row">
+                    <div class="bar-label"><span>基线</span><span>{{ row.baseline_score }}</span></div>
+                    <div class="bar-track"><div class="bar-fill-baseline" style="width: {{ row.baseline_score }}%;"></div></div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <details style="margin-top:12px;">
+              <summary>查看运行指标</summary>
+              <div class="grid two" style="margin-top:12px;">
+                <div class="card">
+                  <div class="subtle">候选方案指标</div>
+                  <div class="subtle">成本：${{ case.candidate_metrics.cost_usd }}</div>
+                  <div class="subtle">耗时：{{ case.candidate_metrics.latency_ms }} 毫秒</div>
+                  <div class="subtle">Tokens：{{ case.candidate_metrics.tokens }}</div>
+                  <div class="subtle">LLM 调用：{{ case.candidate_metrics.llm_calls }}</div>
+                </div>
+                <div class="card">
+                  <div class="subtle">基线方案指标</div>
+                  <div class="subtle">成本：${{ case.baseline_metrics.cost_usd }}</div>
+                  <div class="subtle">耗时：{{ case.baseline_metrics.latency_ms }} 毫秒</div>
+                  <div class="subtle">Tokens：{{ case.baseline_metrics.tokens }}</div>
+                  <div class="subtle">LLM 调用：{{ case.baseline_metrics.llm_calls }}</div>
+                </div>
+              </div>
+            </details>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
     </div>
     {% else %}
     <div class="empty-state">当前还没有评测记录。</div>

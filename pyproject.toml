@@ -10,6 +10,7 @@ dependencies = [
   "python-multipart>=0.0.20",
   "pymysql>=1.1.1",
   "redis>=6.4.0",
+  "reportlab>=4.4.10",
   "sqlalchemy>=2.0.43",
   "uvicorn[standard]>=0.35.0",
 ]
