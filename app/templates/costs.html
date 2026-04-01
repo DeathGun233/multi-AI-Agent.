@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div>
+    <h1>Cost Board</h1>
+    <p>Track monthly model spend, budget usage, and cost concentration by model.</p>
+  </div>
+</div>
+
+<div class="grid three">
+  <div class="card">
+    <div class="subtle">Monthly spend</div>
+    <div class="metric">${{ summary.total_cost_usd }}</div>
+    <div class="subtle">{{ summary.month }}</div>
+  </div>
+  <div class="card">
+    <div class="subtle">Budget usage</div>
+    <div class="metric">{{ summary.spend_ratio_percent }}%</div>
+    <div class="subtle">Budget: ${{ summary.monthly_budget_usd }}</div>
+  </div>
+  <div class="card">
+    <div class="subtle">Projected month end</div>
+    <div class="metric">${{ summary.projected_month_end_cost_usd }}</div>
+    <div class="subtle">Remaining: ${{ summary.budget_remaining_usd }}</div>
+  </div>
+</div>
+
+<div class="grid two" style="margin-top:18px;">
+  <section class="card">
+    <h2>By model</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Requests</th>
+          <th>Cost</th>
+          <th>Tokens</th>
+          <th>Avg latency</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in summary.model_rows %}
+        <tr>
+          <td>{{ row.model_name }}</td>
+          <td>{{ row.requests }}</td>
+          <td>${{ row.cost_usd }}</td>
+          <td>{{ row.tokens }}</td>
+          <td>{{ row.avg_latency_ms }} ms</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="subtle">No LLM calls yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Daily spend</h2>
+    <div class="stack">
+      {% for row in summary.daily_cost_rows %}
+      <div class="card">
+        <strong>{{ row.day }}</strong>
+        <div class="subtle">${{ row.cost_usd }}</div>
+      </div>
+      {% else %}
+      <div class="subtle">No spend recorded for this month.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

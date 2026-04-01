@@ -9,6 +9,7 @@ from openai import OpenAI
 
 from app.config import Settings
 from app.models import ExecutionProfile, LLMCall
+from app.prompt_catalog import get_model_option
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,9 @@ class LLMService:
             content = response.choices[0].message.content or ""
             parsed = self._extract_json(content)
             usage = getattr(response, "usage", None)
+            prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+            completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+            total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
             call = self._build_call_trace(
                 route_target=route_target,
                 model_name=model_name,
@@ -74,9 +78,9 @@ class LLMService:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 latency_ms=latency_ms,
-                prompt_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
-                completion_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
-                total_tokens=int(getattr(usage, "total_tokens", 0) or 0),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
                 used_fallback=parsed is None,
                 error=None if parsed is not None else "json_parse_failed",
             )
@@ -112,6 +116,12 @@ class LLMService:
         used_fallback: bool = False,
         error: str | None = None,
     ) -> LLMCall:
+        pricing = get_model_option(model_name)
+        estimated_cost = round(
+            (prompt_tokens / 1000.0) * pricing.input_cost_per_1k_tokens
+            + (completion_tokens / 1000.0) * pricing.output_cost_per_1k_tokens,
+            6,
+        )
         return LLMCall(
             provider="dashscope_openai_compatible",
             model_name=model_name,
@@ -127,6 +137,7 @@ class LLMService:
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             latency_ms=latency_ms,
+            estimated_cost_usd=estimated_cost,
             used_fallback=used_fallback,
             error=error,
         )
@@ -135,8 +146,7 @@ class LLMService:
     def _extract_json(content: str) -> dict[str, Any] | None:
         text = content.strip()
         if text.startswith("```"):
-            parts = text.split("```")
-            for part in parts:
+            for part in text.split("```"):
                 candidate = part.strip()
                 if candidate.startswith("json"):
                     candidate = candidate[4:].strip()

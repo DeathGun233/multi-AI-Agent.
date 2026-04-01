@@ -4,3 +4,5 @@ __pycache__/
 *.pyo
 *.db
 .venv/
+server.out.log
+server.err.log

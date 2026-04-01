@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,7 @@ class Settings:
     model_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     api_key: str | None = None
     disable_llm: bool = False
+    monthly_budget_usd: float = 25.0
     secret_key: str = "flowpilot-demo-secret"
     session_cookie_name: str = "flowpilot_session"
     users_json: str | None = None
@@ -25,7 +27,11 @@ class Settings:
             or os.getenv("OPENAI_API_KEY")
             or os.getenv("OPEN_AI_KEY")
         )
-        disable_llm = bool(os.getenv("FLOWPILOT_DISABLE_LLM")) or bool(os.getenv("PYTEST_CURRENT_TEST"))
+        disable_llm = (
+            bool(os.getenv("FLOWPILOT_DISABLE_LLM"))
+            or bool(os.getenv("PYTEST_CURRENT_TEST"))
+            or ("pytest" in sys.modules)
+        )
         return cls(
             database_url=os.getenv("DATABASE_URL", "sqlite:///flowpilot.db"),
             redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
@@ -33,6 +39,7 @@ class Settings:
             model_base_url=os.getenv("MODEL_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
             api_key=api_key,
             disable_llm=disable_llm,
+            monthly_budget_usd=float(os.getenv("FLOWPILOT_MONTHLY_BUDGET_USD", "25")),
             secret_key=os.getenv("FLOWPILOT_SECRET_KEY", "flowpilot-demo-secret"),
             session_cookie_name=os.getenv("FLOWPILOT_SESSION_COOKIE", "flowpilot_session"),
             users_json=os.getenv("FLOWPILOT_USERS_JSON"),

@@ -6,55 +6,55 @@ from app.models import WorkflowTemplate, WorkflowType
 WORKFLOW_TEMPLATES = [
     WorkflowTemplate(
         workflow_type=WorkflowType.SALES_FOLLOWUP,
-        title="销售分析与跟进计划",
-        description="分析销售漏斗、识别风险客户，并生成可执行的跟进策略。",
+        title="Sales follow-up plan",
+        description="Analyze funnel performance, find risky accounts, and produce follow-up actions.",
         sample_payload={
             "period": "2026-W13",
-            "region": "华东",
-            "sales_reps": ["王晨", "李雪"],
+            "region": "East",
+            "sales_reps": ["Wang Chen", "Li Xue"],
             "focus_metric": "conversion_rate",
         },
     ),
     WorkflowTemplate(
         workflow_type=WorkflowType.MARKETING_CAMPAIGN,
-        title="营销内容工厂",
-        description="围绕目标产品生成多渠道内容资产、投放角度和审核提示。",
+        title="Marketing content factory",
+        description="Generate multi-channel content assets, launch ideas, and review notes.",
         sample_payload={
-            "product_name": "FlowPilot AI 自动化平台",
-            "audience": "B2B 企业运营负责人",
+            "product_name": "FlowPilot AI",
+            "audience": "B2B operations leads",
             "channels": ["xiaohongshu", "douyin", "wechat"],
-            "key_benefits": ["多智能体执行", "人工接管", "流程可观测"],
-            "tone": "专业但有行动感",
+            "key_benefits": ["multi-agent execution", "human handoff", "traceable workflow"],
+            "tone": "professional and action-oriented",
         },
     ),
     WorkflowTemplate(
         workflow_type=WorkflowType.SUPPORT_TRIAGE,
-        title="客服工单智能分流",
-        description="完成工单分类、优先级排序、回复草稿和升级建议。",
+        title="Support ticket triage",
+        description="Classify tickets, assign priority, draft replies, and decide handoff.",
         sample_payload={
             "tickets": [
                 {
-                    "customer": "上海嘉祺医疗",
-                    "message": "部署后接口连续报错，今天必须恢复，不然影响上线。",
+                    "customer": "Jiaheng Medical",
+                    "message": "Production API errors are blocking a release. Need help today.",
                 },
                 {
-                    "customer": "星云教育",
-                    "message": "请问你们支持开票和合同模板下载吗？",
+                    "customer": "Xingyun Education",
+                    "message": "Can you share the invoicing flow and contract template?",
                 },
             ]
         },
     ),
     WorkflowTemplate(
         workflow_type=WorkflowType.MEETING_MINUTES,
-        title="会议纪要转执行系统",
-        description="提取负责人、截止时间、待办项和会后同步信息。",
+        title="Meeting notes to action items",
+        description="Extract owners, deadlines, action items, and an execution summary.",
         sample_payload={
-            "meeting_title": "AI 增长周会",
+            "meeting_title": "AI Growth Weekly",
             "notes": (
-                "1. 张敏负责本周五前整理竞品投放复盘；"
-                "2. 陈涛下周二前提交销售线索分层方案；"
-                "3. 王晨今天下班前确认客户试点名单；"
-                "4. 市场组需要补一版小红书脚本。"
+                "1. Zhang Min to finish competitor review by Friday. "
+                "2. Chen Tao to propose lead scoring plan by next Tuesday. "
+                "3. Wang Chen to confirm pilot customers before end of day. "
+                "4. Marketing team needs a refreshed social script."
             ),
         },
     ),
@@ -62,14 +62,14 @@ WORKFLOW_TEMPLATES = [
 
 
 SALES_DATA = [
-    {"rep": "王晨", "region": "华东", "leads": 48, "qualified": 21, "deals": 7, "avg_cycle_days": 11},
-    {"rep": "李雪", "region": "华东", "leads": 35, "qualified": 15, "deals": 3, "avg_cycle_days": 17},
-    {"rep": "顾林", "region": "华南", "leads": 52, "qualified": 23, "deals": 8, "avg_cycle_days": 10},
+    {"rep": "Wang Chen", "region": "East", "leads": 48, "qualified": 21, "deals": 7, "avg_cycle_days": 11},
+    {"rep": "Li Xue", "region": "East", "leads": 35, "qualified": 15, "deals": 3, "avg_cycle_days": 17},
+    {"rep": "Gu Lin", "region": "South", "leads": 52, "qualified": 23, "deals": 8, "avg_cycle_days": 10},
 ]
 
 
 RISK_CUSTOMERS = [
-    {"name": "华启制造", "risk": "沉默 10 天", "owner": "李雪", "next_action": "安排产品演示复盘"},
-    {"name": "聚能科技", "risk": "POC 迟迟未启动", "owner": "王晨", "next_action": "拉技术负责人对齐范围"},
-    {"name": "深海物流", "risk": "预算审批卡住", "owner": "李雪", "next_action": "补 ROI 材料并推动决策人会议"},
+    {"name": "Huating Pharma", "risk": "silent for 10 days", "owner": "Li Xue", "next_action": "schedule a demo review"},
+    {"name": "Juneng Tech", "risk": "POC not started", "owner": "Wang Chen", "next_action": "align technical scope"},
+    {"name": "DeepSea Logistics", "risk": "budget approval blocked", "owner": "Li Xue", "next_action": "send ROI deck and push decision meeting"},
 ]

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+  <div>
+    <h1>Batch A/B</h1>
+    <p>Run prompt and model variants in bulk, then compare score, cost, latency, and handoff rate.</p>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Create batch experiment</h2>
+    <form id="batch-form" class="stack">
+      <label>Experiment name<input id="batch-name" value="Prompt AB lab"></label>
+      <label>Workflow template
+        <select id="batch-workflow-type">
+          {% for item in templates_catalog %}
+          <option value="{{ item.workflow_type.value }}" data-sample='{{ item.sample_payload | tojson }}'>{{ item.title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Repeats<input id="batch-repeats" type="number" min="1" max="5" value="2"></label>
+      <label>Input payload<textarea id="batch-payload"></textarea></label>
+      <label>Variants JSON
+        <textarea id="batch-variants">[
+  {
+    "variant_id": "control",
+    "label": "Control",
+    "model_name": "qwen-plus",
+    "prompt_profile_id": "balanced-v1",
+    "routing_policy_id": "balanced-router-v1"
+  },
+  {
+    "variant_id": "challenger",
+    "label": "Challenger",
+    "model_name": "qwen3-max",
+    "prompt_profile_id": "ops-deep-v1",
+    "routing_policy_id": "strict-review-v1"
+  }
+]</textarea>
+      </label>
+      <button type="submit">Run batch</button>
+      <div id="batch-result" class="subtle"></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Existing batches</h2>
+    <div class="stack">
+      {% for batch in batches %}
+      <div class="card">
+        <strong>{{ batch.name }}</strong>
+        <div class="subtle">{{ batch.workflow_type.value }} · {{ batch.summary.run_count }} runs</div>
+        <pre>{{ batch.summary | tojson(indent=2) }}</pre>
+      </div>
+      {% else %}
+      <div class="subtle">No batch experiments yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<script>
+  const batchWorkflow = document.getElementById("batch-workflow-type");
+  const batchPayload = document.getElementById("batch-payload");
+  function syncBatchPayload() {
+    const option = batchWorkflow.options[batchWorkflow.selectedIndex];
+    const sample = option.dataset.sample ? JSON.parse(option.dataset.sample) : {};
+    batchPayload.value = JSON.stringify(sample, null, 2);
+  }
+  batchWorkflow.addEventListener("change", syncBatchPayload);
+  syncBatchPayload();
+
+  document.getElementById("batch-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const resultBox = document.getElementById("batch-result");
+    resultBox.textContent = "Running batch experiment...";
+    try {
+      const response = await fetch("/api/batches", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          name: document.getElementById("batch-name").value,
+          workflow_type: batchWorkflow.value,
+          input_payload: JSON.parse(batchPayload.value || "{}"),
+          repeats: Number(document.getElementById("batch-repeats").value || 1),
+          variants: JSON.parse(document.getElementById("batch-variants").value || "[]")
+        })
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || "Failed to run batch");
+      }
+      resultBox.textContent = `Batch created: ${body.name}`;
+      window.location.reload();
+    } catch (error) {
+      resultBox.textContent = error.message;
+    }
+  });
+</script>
+{% endblock %}

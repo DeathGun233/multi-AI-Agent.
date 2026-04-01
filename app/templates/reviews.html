@@ -1,39 +1,36 @@
 {% extends "base.html" %}
-{% block title %}审核中心 · FlowPilot{% endblock %}
 {% block content %}
-<section class="hero">
-  <h2>审核中心</h2>
-  <p>这里集中查看进入人工接管的工作流，并进行通过或驳回操作。</p>
-</section>
-
-<section class="panel">
-  <h3>待审核任务</h3>
-  {% if queue %}
-  <div class="card-list">
-    {% for run in queue %}
-    <article class="item-card">
-      <h4><a href="/runs/{{ run.id }}">{{ run.title }}</a></h4>
-      <div class="badge-row">
-        <span class="badge status-waiting_human">{{ run.status }}</span>
-        <span class="badge">{{ run.model_name }}</span>
-        <span class="badge">{{ run.prompt_profile_label }}</span>
-        <span class="badge">{{ run.routing_policy_name }}</span>
-      </div>
-      <p class="muted">{{ run.updated_at }}</p>
-      <form method="post" action="/runs/{{ run.id }}/review/form">
-        <input type="hidden" name="next_page" value="reviews" />
-        <label>审核备注<textarea name="comment" placeholder="填写人工判断和处理说明"></textarea></label>
-        <div class="badge-row">
-          <button type="submit" name="decision" value="approve">审核通过</button>
-          <button type="submit" name="decision" value="reject" class="danger">驳回任务</button>
-          <a class="button-link secondary" href="/runs/{{ run.id }}">查看详情</a>
-        </div>
-      </form>
-    </article>
-    {% endfor %}
+<div class="header">
+  <div>
+    <h1>Review Queue</h1>
+    <p>Manual approval area for runs that need a human decision.</p>
   </div>
-  {% else %}
-  <div class="empty">当前没有待审核任务。</div>
-  {% endif %}
+</div>
+
+<section class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Workflow</th>
+        <th>Status</th>
+        <th>Model</th>
+        <th>Prompt</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in review_queue %}
+      <tr>
+        <td><a href="/runs/{{ row.id }}"><strong>{{ row.title }}</strong></a><div class="subtle">{{ row.objective }}</div></td>
+        <td><span class="badge status-{{ row.status }}">{{ row.status }}</span></td>
+        <td>{{ row.model_name }}</td>
+        <td>{{ row.prompt_profile_label }}</td>
+        <td>{{ row.updated_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="subtle">No pending reviews.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endblock %}

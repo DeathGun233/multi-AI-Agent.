@@ -56,10 +56,7 @@ class AuthService:
     def ensure_seeded_users(self) -> None:
         seeds = self._load_seed_users(self.settings.users_json)
         with self.database.session() as session:
-            existing = {
-                record.username: record
-                for record in session.scalars(select(UserAccountRecord)).all()
-            }
+            existing = {record.username: record for record in session.scalars(select(UserAccountRecord)).all()}
             for seed in seeds:
                 record = existing.get(seed.username)
                 if record is None:
@@ -87,7 +84,7 @@ class AuthService:
 
     def build_session_cookie(self, user: AuthUser) -> str:
         payload = {"username": user.username}
-        encoded = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
         signature = hmac.new(
             self.settings.secret_key.encode("utf-8"),
             encoded.encode("utf-8"),
@@ -134,7 +131,7 @@ class AuthService:
     @staticmethod
     def capabilities_for(user: AuthUser | None) -> RoleCapabilities:
         if user is None:
-            return RoleCapabilities(can_view=False, can_run=False, can_review=False, can_admin=False)
+            return RoleCapabilities(False, False, False, False)
         return RoleCapabilities(
             can_view=True,
             can_run=user.role in {ROLE_OPERATOR, ROLE_ADMIN},
@@ -180,8 +177,8 @@ class AuthService:
                 for item in payload
             ]
         return [
-            UserSeed(username="admin", password="admin123", display_name="系统管理员", role=ROLE_ADMIN),
-            UserSeed(username="reviewer", password="reviewer123", display_name="审核负责人", role=ROLE_REVIEWER),
-            UserSeed(username="operator", password="operator123", display_name="流程运营", role=ROLE_OPERATOR),
-            UserSeed(username="viewer", password="viewer123", display_name="只读观察员", role=ROLE_VIEWER),
+            UserSeed(username="admin", password="admin123", display_name="System Admin", role=ROLE_ADMIN),
+            UserSeed(username="reviewer", password="reviewer123", display_name="Review Owner", role=ROLE_REVIEWER),
+            UserSeed(username="operator", password="operator123", display_name="Workflow Operator", role=ROLE_OPERATOR),
+            UserSeed(username="viewer", password="viewer123", display_name="Read Only Viewer", role=ROLE_VIEWER),
         ]

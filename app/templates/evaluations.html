@@ -1,148 +1,122 @@
 {% extends "base.html" %}
-{% block title %}自动评测 · FlowPilot{% endblock %}
 {% block content %}
-<section class="hero">
-  <h2>自动评测与基线对比</h2>
-  <p>用固定评测集比较不同模型、Prompt 和路由策略的表现，输出平均得分、Token、耗时和人工接管率，方便你展示 AI 应用开发中的回归验证能力。</p>
-</section>
+<div class="header">
+  <div>
+    <h1>Evaluations</h1>
+    <p>Run baseline comparisons and include manual feedback samples as a growing regression set.</p>
+  </div>
+</div>
 
-<section class="split">
-  <div class="panel">
-    <h3>启动一次评测</h3>
-    {% if capabilities.can_run %}
-    <form method="post" action="/evaluations/run">
-      <label>
-        评测集
+<div class="grid two">
+  <section class="card">
+    <h2>Start evaluation</h2>
+    <form method="post" action="/evaluations/run" class="stack">
+      <label>Dataset
         <select name="dataset_id">
           {% for item in datasets %}
-          <option value="{{ item.dataset_id }}">{{ item.name }} / {{ item.case_count }} cases</option>
+          <option value="{{ item.dataset_id }}">{{ item.name }} · {{ item.case_count }} cases</option>
           {% endfor %}
         </select>
       </label>
       <div class="grid two">
-        <label>
-          候选模型
-          <select name="candidate_model_name">
-            {% for model in model_options %}
-            <option value="{{ model.model_name }}" {% if model.model_name == default_model_name %}selected{% endif %}>{{ model.label }} / {{ model.model_name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          基线模型
-          <select name="baseline_model_name">
-            {% for model in model_options %}
-            <option value="{{ model.model_name }}">{{ model.label }} / {{ model.model_name }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        <div class="card">
+          <h3>Candidate</h3>
+          <div class="stack">
+            <label>Model
+              <select name="candidate_model_name">
+                {% for item in models %}
+                <option value="{{ item.model_name }}">{{ item.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Prompt
+              <select name="candidate_prompt_profile_id">
+                {% for item in prompt_profiles %}
+                <option value="{{ item.profile_id }}">{{ item.name }} {{ item.version }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Routing
+              <select name="candidate_routing_policy_id">
+                {% for item in routing_policies %}
+                <option value="{{ item.policy_id }}">{{ item.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Baseline</h3>
+          <div class="stack">
+            <label>Model
+              <select name="baseline_model_name">
+                {% for item in models %}
+                <option value="{{ item.model_name }}">{{ item.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Prompt
+              <select name="baseline_prompt_profile_id">
+                {% for item in prompt_profiles %}
+                <option value="{{ item.profile_id }}">{{ item.name }} {{ item.version }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Routing
+              <select name="baseline_routing_policy_id">
+                {% for item in routing_policies %}
+                <option value="{{ item.policy_id }}">{{ item.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </div>
       </div>
-      <div class="grid two">
-        <label>
-          候选 Prompt
-          <select name="candidate_prompt_profile_id">
-            {% for prompt in prompt_profiles %}
-            <option value="{{ prompt.profile_id }}" {% if prompt.profile_id == default_prompt_profile_id %}selected{% endif %}>{{ prompt.name }} {{ prompt.version }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          基线 Prompt
-          <select name="baseline_prompt_profile_id">
-            {% for prompt in prompt_profiles %}
-            <option value="{{ prompt.profile_id }}">{{ prompt.name }} {{ prompt.version }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <div class="grid two">
-        <label>
-          候选路由
-          <select name="candidate_routing_policy_id">
-            {% for item in routing_policies %}
-            <option value="{{ item.policy_id }}" {% if item.policy_id == default_routing_policy_id %}selected{% endif %}>{{ item.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          基线路由
-          <select name="baseline_routing_policy_id">
-            {% for item in routing_policies %}
-            <option value="{{ item.policy_id }}">{{ item.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <button type="submit">开始评测</button>
+      <button type="submit">Run evaluation</button>
     </form>
-    {% else %}
-    <div class="empty">当前账号没有运行权限。</div>
-    {% endif %}
-  </div>
+  </section>
 
-  <div class="panel">
-    <h3>评测集说明</h3>
-    <div class="card-list">
+  <section class="card">
+    <h2>Datasets</h2>
+    <div class="stack">
       {% for item in datasets %}
-      <article class="item-card">
-        <h4>{{ item.name }}</h4>
-        <div class="badge-row"><span class="badge">{{ item.dataset_id }}</span><span class="badge">{{ item.case_count }} cases</span></div>
-        <p class="muted">{{ item.description }}</p>
-      </article>
+      <div class="card">
+        <strong>{{ item.name }}</strong>
+        <div class="subtle">{{ item.description }}</div>
+        <div class="badge">{{ item.case_count }} cases</div>
+      </div>
       {% endfor %}
     </div>
-  </div>
-</section>
+  </section>
+</div>
 
-<section class="panel">
-  <h3>历史评测结果</h3>
-  {% if evaluations %}
-  <div class="card-list">
-    {% for item in evaluations %}
-    <article class="item-card">
-      <h4>{{ item.dataset_name }}</h4>
-      <div class="badge-row">
-        <span class="badge">{{ item.candidate_profile.primary_model_name }}</span>
-        <span class="badge">{{ item.candidate_profile.prompt_profile.name }} {{ item.candidate_profile.prompt_profile.version }}</span>
-        <span class="badge">{{ item.candidate_profile.routing_policy.name }}</span>
-      </div>
-      <div class="compact-grid" style="margin-top: 12px;">
-        <div class="compare-highlight"><strong>候选平均分</strong><p class="muted">{{ item.summary.candidate_avg_score }}</p></div>
-        <div class="compare-highlight"><strong>基线平均分</strong><p class="muted">{{ item.summary.baseline_avg_score }}</p></div>
-        <div class="compare-highlight"><strong>得分差值</strong><p class="muted">{{ item.summary.score_delta }}</p></div>
-        <div class="compare-highlight"><strong>候选平均耗时</strong><p class="muted">{{ item.summary.candidate_avg_latency_ms }} ms</p></div>
-      </div>
-      <div class="table-wrap" style="margin-top: 14px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Case</th>
-              <th>候选得分</th>
-              <th>基线得分</th>
-              <th>差值</th>
-              <th>候选状态</th>
-              <th>基线状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for case in item.case_results %}
-            <tr>
-              <td>{{ case.title }}</td>
-              <td>{{ case.candidate.score }}</td>
-              <td>{{ case.baseline.score }}</td>
-              <td>{{ case.delta }}</td>
-              <td>{{ case.candidate.status }}</td>
-              <td>{{ case.baseline.status }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty">还没有评测记录，先运行一组候选与基线对比。</div>
-  {% endif %}
+<section class="card" style="margin-top:18px;">
+  <h2>Evaluation history</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Dataset</th>
+        <th>Candidate</th>
+        <th>Baseline</th>
+        <th>Summary</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in evaluations %}
+      <tr>
+        <td>{{ item.dataset_name }}</td>
+        <td>{{ item.candidate_profile.primary_model_name }} · {{ item.candidate_profile.prompt_profile.name }}</td>
+        <td>{{ item.baseline_profile.primary_model_name }} · {{ item.baseline_profile.prompt_profile.name }}</td>
+        <td>
+          <div>candidate_avg_score: {{ item.summary.candidate_avg_score }}</div>
+          <div>baseline_avg_score: {{ item.summary.baseline_avg_score }}</div>
+          <div>score_delta: {{ item.summary.score_delta }}</div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="subtle">No evaluations yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endblock %}

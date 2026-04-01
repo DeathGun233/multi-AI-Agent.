@@ -10,6 +10,8 @@ class ModelOption:
     model_name: str
     label: str
     description: str
+    input_cost_per_1k_tokens: float
+    output_cost_per_1k_tokens: float
 
 
 @dataclass(frozen=True)
@@ -48,17 +50,23 @@ AVAILABLE_MODELS = (
     ModelOption(
         model_name="qwen3-max",
         label="Qwen3 Max",
-        description="质量优先，适合复杂分析、严格审核和高要求输出。",
+        description="Quality first. Best for complex analysis and strict review.",
+        input_cost_per_1k_tokens=0.02,
+        output_cost_per_1k_tokens=0.06,
     ),
     ModelOption(
         model_name="qwen-plus",
         label="Qwen Plus",
-        description="均衡成本与质量，适合大多数业务工作流。",
+        description="Balanced quality and cost for everyday workflow runs.",
+        input_cost_per_1k_tokens=0.008,
+        output_cost_per_1k_tokens=0.024,
     ),
     ModelOption(
         model_name="qwen-turbo",
         label="Qwen Turbo",
-        description="速度优先，适合轻量内容生成和高频调用。",
+        description="Speed first. Good for light content generation and high frequency runs.",
+        input_cost_per_1k_tokens=0.002,
+        output_cost_per_1k_tokens=0.006,
     ),
 )
 
@@ -66,47 +74,27 @@ AVAILABLE_MODELS = (
 ROUTING_POLICIES = (
     RoutingPolicyDefinition(
         policy_id="single-model-v1",
-        name="单模型直连",
-        description="所有 Agent 共用同一个主模型，适合做基础对比。",
-        route_templates={
-            "planner": "{primary}",
-            "analyst": "{primary}",
-            "content": "{primary}",
-            "reviewer": "{primary}",
-        },
+        name="Single model",
+        description="Use the same primary model for all agent routes.",
+        route_templates={"planner": "{primary}", "analyst": "{primary}", "content": "{primary}", "reviewer": "{primary}"},
     ),
     RoutingPolicyDefinition(
         policy_id="balanced-router-v1",
-        name="均衡路由",
-        description="分析使用主模型，内容生成走更快模型，审核固定走高质量模型。",
-        route_templates={
-            "planner": "{primary}",
-            "analyst": "{primary}",
-            "content": "qwen-turbo",
-            "reviewer": "qwen3-max",
-        },
+        name="Balanced router",
+        description="Keep analysis on the primary model, send content to Turbo, and review to Max.",
+        route_templates={"planner": "{primary}", "analyst": "{primary}", "content": "qwen-turbo", "reviewer": "qwen3-max"},
     ),
     RoutingPolicyDefinition(
         policy_id="speed-router-v1",
-        name="速度优先路由",
-        description="分析和内容生成都走更快模型，只把审核保留给主模型。",
-        route_templates={
-            "planner": "{primary}",
-            "analyst": "qwen-turbo",
-            "content": "qwen-turbo",
-            "reviewer": "{primary}",
-        },
+        name="Speed router",
+        description="Use Turbo for analysis and content, reserve the primary model for planning and review.",
+        route_templates={"planner": "{primary}", "analyst": "qwen-turbo", "content": "qwen-turbo", "reviewer": "{primary}"},
     ),
     RoutingPolicyDefinition(
         policy_id="strict-review-v1",
-        name="严格审核路由",
-        description="分析和内容都走主模型，审核固定使用最高质量模型。",
-        route_templates={
-            "planner": "{primary}",
-            "analyst": "{primary}",
-            "content": "{primary}",
-            "reviewer": "qwen3-max",
-        },
+        name="Strict review router",
+        description="Always review with Qwen3 Max for safer decisions.",
+        route_templates={"planner": "{primary}", "analyst": "{primary}", "content": "{primary}", "reviewer": "qwen3-max"},
     ),
 )
 
@@ -114,32 +102,32 @@ ROUTING_POLICIES = (
 BUILTIN_PROMPT_PROFILES = (
     PromptProfile(
         profile_id="balanced-v1",
-        name="平衡版",
+        name="Balanced",
         version="v1",
-        description="默认方案，兼顾分析深度、可执行性和输出稳定性。",
-        analyst_instruction="先给结论，再补关键洞察和动作建议，避免空泛复述原始数据。",
-        content_instruction="输出要能被业务同学直接复制使用，兼顾信息完整度和易读性。",
-        reviewer_instruction="以稳健为主，只在结果足够完整且风险可控时允许自动流转。",
+        description="Default prompt profile that balances depth, execution clarity, and stable output.",
+        analyst_instruction="Lead with the conclusion, then explain key findings and actions in a concise way.",
+        content_instruction="Generate business-ready output that can be reused directly by operators or reviewers.",
+        reviewer_instruction="Allow auto-complete only when the result is complete, low risk, and operationally clear.",
         is_builtin=True,
     ),
     PromptProfile(
         profile_id="ops-deep-v1",
-        name="运营深挖版",
+        name="Ops Deep Dive",
         version="v1",
-        description="更强调问题拆解、异常原因定位和后续动作设计。",
-        analyst_instruction="突出异常定位、瓶颈拆解和优先级排序，用更强的运营分析视角输出。",
-        content_instruction="补充更具体的行动项、负责人建议和执行节奏，减少泛化表达。",
-        reviewer_instruction="对信息缺口和潜在执行风险更敏感，宁可人工复核也不要过度自动放行。",
+        description="Stronger analysis and clearer prioritization for operational workflows.",
+        analyst_instruction="Highlight root causes, bottlenecks, priority order, and execution tradeoffs.",
+        content_instruction="Produce clearer owners, deadlines, and next steps with less generic filler.",
+        reviewer_instruction="Be conservative about approval whenever the output has gaps or operational risk.",
         is_builtin=True,
     ),
     PromptProfile(
         profile_id="exec-brief-v2",
-        name="管理摘要版",
+        name="Exec Brief",
         version="v2",
-        description="强调结论先行、简洁表达和适合管理层快速阅读的产出。",
-        analyst_instruction="优先输出高层结论、核心风险和最重要的 2 到 3 个动作，不展开冗长细节。",
-        content_instruction="内容偏摘要和汇报风格，适合周报、管理看板和对上同步材料。",
-        reviewer_instruction="重点检查结论是否明确、格式是否可汇报、是否适合直接对上流转。",
+        description="Short, high-signal summaries for managers and weekly reviews.",
+        analyst_instruction="Focus on top-line conclusions, major risks, and the two or three most important actions.",
+        content_instruction="Keep the tone brief and presentation-ready for summaries and management updates.",
+        reviewer_instruction="Check whether the result is decision-ready and easy to hand off upward.",
         is_builtin=True,
     ),
 )
@@ -148,59 +136,63 @@ BUILTIN_PROMPT_PROFILES = (
 EVALUATION_DATASETS = (
     EvaluationDatasetDefinition(
         dataset_id="ops-regression-v1",
-        name="运营回归集",
-        description="覆盖销售、客服、会议纪要和营销内容四类典型工作流，用于回归验证。",
+        name="Operations regression set",
+        description="Covers sales, marketing, support, and meeting workflows for a stable baseline.",
         cases=(
             EvaluationCaseDefinition(
                 case_id="sales-conversion",
-                title="销售转化漏斗分析",
+                title="Sales funnel conversion analysis",
                 workflow_type="sales_followup",
                 input_payload={
                     "period": "2026-W13",
-                    "region": "华东",
-                    "sales_reps": ["王晨", "李雪"],
+                    "region": "East",
+                    "sales_reps": ["Wang Chen", "Li Xue"],
                     "focus_metric": "conversion_rate",
                 },
                 expected_status="waiting_human",
-                expected_keywords=("转化", "风险客户", "跟进"),
+                expected_keywords=("conversion", "risk customers", "follow-up"),
             ),
             EvaluationCaseDefinition(
                 case_id="marketing-assets",
-                title="营销多渠道内容生成",
+                title="Marketing multi-channel content",
                 workflow_type="marketing_campaign",
                 input_payload={
-                    "product_name": "FlowPilot AI 自动化平台",
-                    "audience": "B2B 企业运营负责人",
+                    "product_name": "FlowPilot AI",
+                    "audience": "B2B operations leads",
                     "channels": ["xiaohongshu", "douyin", "wechat"],
-                    "key_benefits": ["多智能体执行", "人工接管", "流程可观测"],
-                    "tone": "专业但有行动感",
+                    "key_benefits": ["multi-agent execution", "human handoff", "traceable workflow"],
+                    "tone": "professional and action-oriented",
                 },
                 expected_status="waiting_human",
-                expected_keywords=("投放", "合规", "内容"),
+                expected_keywords=("launch", "compliance", "content"),
             ),
             EvaluationCaseDefinition(
                 case_id="support-handoff",
-                title="客服故障升级判断",
+                title="Support escalation decision",
                 workflow_type="support_triage",
                 input_payload={
                     "tickets": [
-                        {"customer": "示例客户", "message": "系统报错并影响上线，请尽快恢复。"},
-                        {"customer": "星云教育", "message": "请问支持开票和合同模板下载吗？"},
+                        {"customer": "Example Client", "message": "Production API errors are blocking a release. Need help today."},
+                        {"customer": "Xingyun Education", "message": "Can you share the invoicing flow and contract template?"},
                     ]
                 },
                 expected_status="waiting_human",
-                expected_keywords=("紧急", "升级", "回复"),
+                expected_keywords=("urgent", "escalation", "reply"),
             ),
             EvaluationCaseDefinition(
                 case_id="meeting-followup",
-                title="会议纪要拆解待办",
+                title="Meeting note action extraction",
                 workflow_type="meeting_minutes",
                 input_payload={
-                    "meeting_title": "AI 增长周会",
-                    "notes": "1. 张敏本周五前整理竞品投放复盘；2. 陈涛下周二前提交销售线索分层方案；3. 王晨今天下班前确认客户试点名单。",
+                    "meeting_title": "AI Growth Weekly",
+                    "notes": (
+                        "1. Zhang Min to finish competitor review by Friday. "
+                        "2. Chen Tao to propose lead scoring plan by next Tuesday. "
+                        "3. Wang Chen to confirm pilot customers before end of day."
+                    ),
                 },
                 expected_status="completed",
-                expected_keywords=("行动项", "负责人", "总结"),
+                expected_keywords=("action items", "owners", "summary"),
             ),
         ),
     ),
@@ -215,18 +207,21 @@ _ROUTING_INDEX = {item.policy_id: item for item in ROUTING_POLICIES}
 _DATASET_INDEX = {item.dataset_id: item for item in EVALUATION_DATASETS}
 
 
-def list_model_options() -> list[dict[str, str]]:
+def list_model_options() -> list[dict[str, str | float]]:
     return [
-        {"model_name": item.model_name, "label": item.label, "description": item.description}
+        {
+            "model_name": item.model_name,
+            "label": item.label,
+            "description": item.description,
+            "input_cost_per_1k_tokens": item.input_cost_per_1k_tokens,
+            "output_cost_per_1k_tokens": item.output_cost_per_1k_tokens,
+        }
         for item in AVAILABLE_MODELS
     ]
 
 
 def list_routing_policies() -> list[dict[str, str]]:
-    return [
-        {"policy_id": item.policy_id, "name": item.name, "description": item.description}
-        for item in ROUTING_POLICIES
-    ]
+    return [{"policy_id": item.policy_id, "name": item.name, "description": item.description} for item in ROUTING_POLICIES]
 
 
 def list_evaluation_datasets() -> list[dict[str, str]]:
@@ -239,6 +234,10 @@ def list_evaluation_datasets() -> list[dict[str, str]]:
         }
         for item in EVALUATION_DATASETS
     ]
+
+
+def get_model_option(model_name: str) -> ModelOption:
+    return _MODEL_INDEX[model_name]
 
 
 def get_routing_policy(policy_id: str | None = None) -> RoutingPolicyDefinition:

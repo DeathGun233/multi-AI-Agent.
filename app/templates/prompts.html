@@ -1,63 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Prompt 管理 · FlowPilot{% endblock %}
 {% block content %}
-<section class="hero">
-  <h2>Prompt 历史版本管理</h2>
-  <p>这里可以查看内置 Prompt 方案，并为业务场景新增或编辑自定义版本，方便后续做实验对比与回归评测。</p>
-</section>
+<div class="header">
+  <div>
+    <h1>Prompt Profiles</h1>
+    <p>Built-in and custom prompt profiles used by Analyst, Content, and Reviewer agents.</p>
+  </div>
+</div>
 
-<section class="split">
-  <div class="panel">
-    <h3>已有 Prompt 版本</h3>
-    <div class="card-list">
-      {% for prompt in prompt_profiles %}
-      <article class="item-card">
-        <h4>{{ prompt.name }} {{ prompt.version }}</h4>
-        <div class="badge-row">
-          <span class="badge">{{ prompt.profile_id }}</span>
-          {% if prompt.base_profile_id %}<span class="badge">base={{ prompt.base_profile_id }}</span>{% endif %}
-          {% if prompt.is_builtin %}<span class="badge">内置</span>{% else %}<span class="badge">自定义</span>{% endif %}
-        </div>
-        <p class="muted">{{ prompt.description }}</p>
-        <div class="card-list">
-          <article class="item-card"><strong>分析指令</strong><p class="muted">{{ prompt.analyst_instruction }}</p></article>
-          <article class="item-card"><strong>内容指令</strong><p class="muted">{{ prompt.content_instruction }}</p></article>
-          <article class="item-card"><strong>审核指令</strong><p class="muted">{{ prompt.reviewer_instruction }}</p></article>
-        </div>
-        {% if capabilities.can_admin and not prompt.is_builtin %}
-        <form method="post" action="/prompts/{{ prompt.profile_id }}/update" style="margin-top: 12px;">
-          <label>基线 Prompt ID<input name="base_profile_id" value="{{ prompt.base_profile_id or '' }}" /></label>
-          <label>名称<input name="name" value="{{ prompt.name }}" /></label>
-          <label>版本<input name="version" value="{{ prompt.version }}" /></label>
-          <label>描述<textarea name="description">{{ prompt.description }}</textarea></label>
-          <label>分析指令<textarea name="analyst_instruction">{{ prompt.analyst_instruction }}</textarea></label>
-          <label>内容指令<textarea name="content_instruction">{{ prompt.content_instruction }}</textarea></label>
-          <label>审核指令<textarea name="reviewer_instruction">{{ prompt.reviewer_instruction }}</textarea></label>
-          <button type="submit">保存修改</button>
-        </form>
-        {% endif %}
-      </article>
+<section class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Version</th>
+        <th>Description</th>
+        <th>Type</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in prompt_profiles %}
+      <tr>
+        <td><code>{{ item.profile_id }}</code></td>
+        <td>{{ item.name }}</td>
+        <td>{{ item.version }}</td>
+        <td>{{ item.description }}</td>
+        <td>{% if item.is_builtin %}builtin{% else %}custom{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="subtle">No prompt profiles found.</td></tr>
       {% endfor %}
-    </div>
-  </div>
-
-  <div class="panel">
-    <h3>新增 Prompt 版本</h3>
-    {% if capabilities.can_admin %}
-    <form method="post" action="/prompts/create">
-      <label>Prompt ID<input name="profile_id" placeholder="ops-deep-v2-custom" /></label>
-      <label>基线 Prompt ID<input name="base_profile_id" placeholder="ops-deep-v1" /></label>
-      <label>名称<input name="name" placeholder="运营深挖版" /></label>
-      <label>版本<input name="version" placeholder="v2" /></label>
-      <label>描述<textarea name="description" placeholder="说明这个版本要强化什么能力"></textarea></label>
-      <label>分析指令<textarea name="analyst_instruction" placeholder="给 AnalystAgent 的新增要求"></textarea></label>
-      <label>内容指令<textarea name="content_instruction" placeholder="给 ContentAgent 的新增要求"></textarea></label>
-      <label>审核指令<textarea name="reviewer_instruction" placeholder="给 ReviewerAgent 的新增要求"></textarea></label>
-      <button type="submit">创建新版本</button>
-    </form>
-    {% else %}
-    <div class="empty">当前账号没有 Prompt 管理权限，使用管理员账号可以新增或编辑自定义版本。</div>
-    {% endif %}
-  </div>
+    </tbody>
+  </table>
 </section>
 {% endblock %}

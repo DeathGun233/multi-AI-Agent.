@@ -6,8 +6,26 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.cache import CacheStore
-from app.db import Database, EvaluationRunRecord, PromptProfileRecord, WorkflowRunRecord
-from app.models import EvaluationRun, PromptProfile, ReviewDecision, WorkflowLog, WorkflowPlan, WorkflowRun
+from app.db import (
+    BatchExperimentRunRecord,
+    Database,
+    EvaluationRunRecord,
+    FeedbackSampleRecord,
+    PromptProfileRecord,
+    WorkflowRunRecord,
+)
+from app.models import (
+    BatchExperimentRun,
+    BatchVariantSpec,
+    EvaluationRun,
+    ExecutionProfile,
+    FeedbackSample,
+    PromptProfile,
+    ReviewDecision,
+    WorkflowLog,
+    WorkflowPlan,
+    WorkflowRun,
+)
 
 
 class WorkflowRepository:
@@ -83,10 +101,7 @@ class WorkflowRepository:
 
     def ensure_prompt_profiles(self, prompt_profiles: list[PromptProfile]) -> None:
         with self.database.session() as session:
-            existing = {
-                record.profile_id: record
-                for record in session.scalars(select(PromptProfileRecord)).all()
-            }
+            existing = {record.profile_id: record for record in session.scalars(select(PromptProfileRecord)).all()}
             for prompt_profile in prompt_profiles:
                 record = existing.get(prompt_profile.profile_id)
                 if record is None:
@@ -121,9 +136,7 @@ class WorkflowRepository:
     def get_prompt_profile(self, profile_id: str) -> PromptProfile | None:
         with self.database.session() as session:
             record = session.get(PromptProfileRecord, profile_id)
-            if record is None:
-                return None
-            return self._deserialize_prompt_profile(record)
+            return self._deserialize_prompt_profile(record) if record else None
 
     def list_prompt_profiles(self, include_inactive: bool = False) -> list[PromptProfile]:
         with self.database.session() as session:
@@ -152,19 +165,66 @@ class WorkflowRepository:
     def get_evaluation(self, evaluation_id: str) -> EvaluationRun | None:
         with self.database.session() as session:
             record = session.get(EvaluationRunRecord, evaluation_id)
-            if record is None:
-                return None
-            return self._deserialize_evaluation_run(record)
+            return self._deserialize_evaluation_run(record) if record else None
 
     def list_evaluations(self) -> list[EvaluationRun]:
         with self.database.session() as session:
             records = session.scalars(select(EvaluationRunRecord).order_by(EvaluationRunRecord.created_at.desc())).all()
         return [self._deserialize_evaluation_run(record) for record in records]
 
+    def save_batch_experiment(self, experiment: BatchExperimentRun) -> BatchExperimentRun:
+        with self.database.session() as session:
+            record = session.get(BatchExperimentRunRecord, experiment.id)
+            if record is None:
+                record = BatchExperimentRunRecord(id=experiment.id)
+                session.add(record)
+            record.name = experiment.name
+            record.workflow_type = experiment.workflow_type.value
+            record.input_payload_json = json.dumps(experiment.input_payload, ensure_ascii=False)
+            record.variants_json = json.dumps([item.model_dump(mode="json") for item in experiment.variants], ensure_ascii=False)
+            record.repeats = str(experiment.repeats)
+            record.summary_json = json.dumps(experiment.summary, ensure_ascii=False)
+            record.results_json = json.dumps(experiment.results, ensure_ascii=False)
+            record.created_at = experiment.created_at
+            record.updated_at = experiment.updated_at
+        return experiment
+
+    def get_batch_experiment(self, experiment_id: str) -> BatchExperimentRun | None:
+        with self.database.session() as session:
+            record = session.get(BatchExperimentRunRecord, experiment_id)
+            return self._deserialize_batch_experiment(record) if record else None
+
+    def list_batch_experiments(self) -> list[BatchExperimentRun]:
+        with self.database.session() as session:
+            records = session.scalars(select(BatchExperimentRunRecord).order_by(BatchExperimentRunRecord.created_at.desc())).all()
+        return [self._deserialize_batch_experiment(record) for record in records]
+
+    def save_feedback_sample(self, sample: FeedbackSample) -> FeedbackSample:
+        with self.database.session() as session:
+            record = session.get(FeedbackSampleRecord, sample.id)
+            if record is None:
+                record = FeedbackSampleRecord(id=sample.id)
+                session.add(record)
+            record.source_run_id = sample.source_run_id
+            record.workflow_type = sample.workflow_type.value
+            record.input_payload_json = json.dumps(sample.input_payload, ensure_ascii=False)
+            record.expected_status = sample.expected_status.value
+            record.reviewer_name = sample.reviewer_name
+            record.reviewer_comment = sample.reviewer_comment
+            record.review_score = str(sample.review_score)
+            record.expected_keywords_json = json.dumps(sample.expected_keywords, ensure_ascii=False)
+            record.output_snapshot_json = json.dumps(sample.output_snapshot, ensure_ascii=False)
+            record.created_at = sample.created_at
+        return sample
+
+    def list_feedback_samples(self) -> list[FeedbackSample]:
+        with self.database.session() as session:
+            records = session.scalars(select(FeedbackSampleRecord).order_by(FeedbackSampleRecord.created_at.desc())).all()
+        return [self._deserialize_feedback_sample(record) for record in records]
+
     def _cache_run(self, run: WorkflowRun) -> None:
-        if not self.cache:
-            return
-        self.cache.set_json(f"workflow_run:{run.id}", run.model_dump(mode="json"))
+        if self.cache:
+            self.cache.set_json(f"workflow_run:{run.id}", run.model_dump(mode="json"))
 
     def _get_cached_run(self, run_id: str) -> WorkflowRun | None:
         if not self.cache:
@@ -183,6 +243,7 @@ class WorkflowRepository:
                 llm_call.setdefault("route_target", "legacy")
                 llm_call.setdefault("routing_policy_id", None)
                 llm_call.setdefault("routing_policy_name", None)
+                llm_call.setdefault("estimated_cost_usd", 0.0)
         return WorkflowRun(
             id=record.id,
             workflow_type=record.workflow_type,
@@ -217,8 +278,6 @@ class WorkflowRepository:
 
     @staticmethod
     def _deserialize_evaluation_run(record: EvaluationRunRecord) -> EvaluationRun:
-        from app.models import ExecutionProfile
-
         return EvaluationRun(
             id=record.id,
             dataset_id=record.dataset_id,
@@ -232,12 +291,39 @@ class WorkflowRepository:
         )
 
     @staticmethod
+    def _deserialize_batch_experiment(record: BatchExperimentRunRecord) -> BatchExperimentRun:
+        return BatchExperimentRun(
+            id=record.id,
+            name=record.name,
+            workflow_type=record.workflow_type,
+            input_payload=json.loads(record.input_payload_json),
+            variants=[BatchVariantSpec(**item) for item in json.loads(record.variants_json)],
+            repeats=int(record.repeats),
+            summary=json.loads(record.summary_json),
+            results=json.loads(record.results_json),
+            created_at=WorkflowRepository._as_datetime(record.created_at),
+            updated_at=WorkflowRepository._as_datetime(record.updated_at),
+        )
+
+    @staticmethod
+    def _deserialize_feedback_sample(record: FeedbackSampleRecord) -> FeedbackSample:
+        return FeedbackSample(
+            id=record.id,
+            source_run_id=record.source_run_id,
+            workflow_type=record.workflow_type,
+            input_payload=json.loads(record.input_payload_json),
+            expected_status=record.expected_status,
+            reviewer_name=record.reviewer_name,
+            reviewer_comment=record.reviewer_comment,
+            review_score=float(record.review_score),
+            expected_keywords=json.loads(record.expected_keywords_json),
+            output_snapshot=json.loads(record.output_snapshot_json),
+            created_at=WorkflowRepository._as_datetime(record.created_at),
+        )
+
+    @staticmethod
     def _as_datetime(value: datetime | str) -> datetime:
         if isinstance(value, datetime):
-            if value.tzinfo is None:
-                return value.replace(tzinfo=timezone.utc)
-            return value
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
         parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)

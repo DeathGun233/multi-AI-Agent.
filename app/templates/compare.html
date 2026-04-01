@@ -1,115 +1,50 @@
 {% extends "base.html" %}
-{% block title %}模型与 Prompt 对比 · FlowPilot{% endblock %}
 {% block content %}
-<section class="hero">
-  <h2>模型与 Prompt 对比</h2>
-  <p>这里会把每次运行沉淀下来的模型、Prompt 版本和路由策略聚合起来，便于展示 AI 应用工程里的实验、对比和优化能力。</p>
-</section>
+<div class="header">
+  <div>
+    <h1>Compare</h1>
+    <p>Compare model and prompt combinations based on historical workflow runs.</p>
+  </div>
+</div>
 
-<section class="grid three">
-  <div class="metric"><strong>{{ compare_summary.run_count }}</strong><span class="muted">纳入对比的运行数</span></div>
-  <div class="metric"><strong>{{ compare_summary.model_count }}</strong><span class="muted">模型种类</span></div>
-  <div class="metric"><strong>{{ compare_summary.routing_count }}</strong><span class="muted">路由策略数</span></div>
-</section>
+<div class="grid three">
+  <div class="card"><div class="subtle">Grouped combinations</div><div class="metric">{{ summary.rows|length }}</div></div>
+  <div class="card"><div class="subtle">Total runs</div><div class="metric">{{ summary.run_count }}</div></div>
+  <div class="card"><div class="subtle">Avg view</div><div class="metric">A/B</div><div class="subtle">Prompt and routing variants side by side</div></div>
+</div>
 
-<section class="split">
-  <div class="panel">
-    <h3>可选模型</h3>
-    <div class="card-list">
-      {% for model in model_options %}
-      <article class="item-card">
-        <h4>{{ model.label }}</h4>
-        <div class="badge-row"><span class="badge">{{ model.model_name }}</span></div>
-        <p class="muted">{{ model.description }}</p>
-      </article>
+<section class="card" style="margin-top:18px;">
+  <table>
+    <thead>
+      <tr>
+        <th>Workflow</th>
+        <th>Model</th>
+        <th>Prompt</th>
+        <th>Routing</th>
+        <th>Runs</th>
+        <th>Avg score</th>
+        <th>Avg latency</th>
+        <th>Avg cost</th>
+        <th>Handoff rate</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in summary.rows %}
+      <tr>
+        <td>{{ row.workflow_type }}</td>
+        <td>{{ row.model_name }}</td>
+        <td>{{ row.prompt_profile_label }}</td>
+        <td>{{ row.routing_policy_name }}</td>
+        <td>{{ row.run_count }}</td>
+        <td>{{ row.avg_score }}</td>
+        <td>{{ row.avg_latency_ms }} ms</td>
+        <td>${{ row.avg_cost_usd }}</td>
+        <td>{{ row.handoff_rate }}%</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="subtle">No run history yet.</td></tr>
       {% endfor %}
-    </div>
-  </div>
-  <div class="panel">
-    <h3>路由与 Prompt 方案</h3>
-    <div class="card-list">
-      {% for item in routing_policies %}
-      <article class="item-card">
-        <h4>{{ item.name }}</h4>
-        <div class="badge-row"><span class="badge">{{ item.policy_id }}</span></div>
-        <p class="muted">{{ item.description }}</p>
-      </article>
-      {% endfor %}
-      {% for prompt in prompt_profiles %}
-      <article class="item-card">
-        <h4>{{ prompt.name }} {{ prompt.version }}</h4>
-        <div class="badge-row"><span class="badge">{{ prompt.profile_id }}</span></div>
-        <p class="muted">{{ prompt.description }}</p>
-      </article>
-      {% endfor %}
-    </div>
-  </div>
-</section>
-
-<section class="panel">
-  <h3>组合效果对比</h3>
-  {% if compare_summary.rows %}
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>工作流</th>
-          <th>模型</th>
-          <th>Prompt</th>
-          <th>路由策略</th>
-          <th>运行次数</th>
-          <th>平均评分</th>
-          <th>平均 Tokens</th>
-          <th>平均耗时</th>
-          <th>人工接管率</th>
-          <th>Fallback 率</th>
-          <th>最近一次运行</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in compare_summary.rows %}
-        <tr>
-          <td>{{ row.workflow_title }}</td>
-          <td>{{ row.model_name }}</td>
-          <td>{{ row.prompt_profile_label }}</td>
-          <td>{{ row.routing_policy_name }}</td>
-          <td>{{ row.run_count }}</td>
-          <td>{{ "%.2f"|format(row.avg_score) }}</td>
-          <td>{{ row.avg_tokens }}</td>
-          <td>{{ row.avg_latency_ms }} ms</td>
-          <td>{{ row.handoff_rate }}%</td>
-          <td>{{ row.fallback_rate }}%</td>
-          <td>{{ row.latest_run_at }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="empty">当前还没有足够的运行记录可供对比。先去仪表盘跑几组不同模型、Prompt 或路由策略试试。</div>
-  {% endif %}
-</section>
-
-<section class="panel">
-  <h3>最近实验样本</h3>
-  {% if latest_runs %}
-  <div class="card-list">
-    {% for run in latest_runs %}
-    <article class="item-card">
-      <h4><a href="/runs/{{ run.id }}">{{ run.title }}</a></h4>
-      <div class="badge-row">
-        <span class="badge status-{{ run.status }}">{{ run.status }}</span>
-        <span class="badge">{{ run.model_name }}</span>
-        <span class="badge">{{ run.prompt_profile_label }}</span>
-        <span class="badge">{{ run.routing_policy_name }}</span>
-        <span class="badge">评分 {{ run.review_score }}</span>
-      </div>
-      <p class="muted">{{ run.updated_at }}</p>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty">当前没有实验样本。</div>
-  {% endif %}
+    </tbody>
+  </table>
 </section>
 {% endblock %}

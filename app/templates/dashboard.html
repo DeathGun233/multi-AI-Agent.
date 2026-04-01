@@ -1,229 +1,140 @@
 {% extends "base.html" %}
-{% block title %}仪表盘 · FlowPilot{% endblock %}
 {% block content %}
-<section class="hero">
-  <h2>多 Agent 工作台</h2>
-  <p>从这里发起新工作流、切换模型与 Prompt 版本、选择多模型路由策略，并查看最近运行与待审核任务。</p>
-</section>
+<div class="header">
+  <div>
+    <h1>Dashboard</h1>
+    <p>Launch a workflow, inspect recent activity, and see which runs are waiting for manual review.</p>
+  </div>
+</div>
 
-<section class="grid three">
-  <div class="metric"><strong>{{ summary.total_runs }}</strong><span class="muted">累计运行任务</span></div>
-  <div class="metric"><strong>{{ summary.completed_runs }}</strong><span class="muted">已完成任务</span></div>
-  <div class="metric"><strong>{{ summary.waiting_review }}</strong><span class="muted">待人工审核</span></div>
-</section>
-
-<section class="split">
-  <div class="panel">
-    <h3>新建工作流</h3>
-    {% if capabilities.can_run %}
-    <form method="post" action="/dashboard/run">
-      <label>
-        工作流类型
-        <select id="workflow_type" name="workflow_type">
-          {% for template in templates_data %}
-          <option value="{{ template.workflow_type }}">{{ template.title }}</option>
+<div class="grid two">
+  <section class="card">
+    <h2>Launch workflow</h2>
+    <div class="subtle">Use the JSON payload from a template, then run the workflow through the API.</div>
+    <form id="run-form" class="stack" style="margin-top:16px;">
+      <label>Workflow template
+        <select id="workflow-type">
+          {% for item in templates_catalog %}
+          <option value="{{ item.workflow_type.value }}" data-sample='{{ item.sample_payload | tojson }}'>{{ item.title }}</option>
           {% endfor %}
         </select>
       </label>
-      <div class="grid two">
-        <label>
-          主模型
-          <select name="model_name" id="model_name">
-            {% for model in model_options %}
-            <option value="{{ model.model_name }}" {% if model.model_name == default_model_name %}selected{% endif %}>
-              {{ model.label }} / {{ model.model_name }}
-            </option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Prompt 方案
-          <select name="prompt_profile_id" id="prompt_profile_id">
-            {% for prompt in prompt_profiles %}
-            <option value="{{ prompt.profile_id }}" {% if prompt.profile_id == default_prompt_profile_id %}selected{% endif %}>
-              {{ prompt.name }} {{ prompt.version }}
-            </option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <label>
-        多模型路由
-        <select name="routing_policy_id" id="routing_policy_id">
+      <label>Model
+        <select id="model-name">
+          {% for item in models %}
+          <option value="{{ item.model_name }}">{{ item.label }} · {{ item.model_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Prompt profile
+        <select id="prompt-profile-id">
+          {% for item in prompt_profiles %}
+          <option value="{{ item.profile_id }}">{{ item.name }} {{ item.version }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Routing policy
+        <select id="routing-policy-id">
           {% for item in routing_policies %}
-          <option value="{{ item.policy_id }}" {% if item.policy_id == default_routing_policy_id %}selected{% endif %}>
-            {{ item.name }}
-          </option>
+          <option value="{{ item.policy_id }}">{{ item.name }}</option>
           {% endfor %}
         </select>
       </label>
-      <div class="grid three">
-        <div class="compare-highlight">
-          <strong>模型说明</strong>
-          <p class="muted" id="model_hint_text">{{ model_options[0].description }}</p>
-        </div>
-        <div class="compare-highlight">
-          <strong>Prompt 说明</strong>
-          <p class="muted" id="prompt_hint_text">{{ prompt_profiles[0].description }}</p>
-        </div>
-        <div class="compare-highlight">
-          <strong>路由说明</strong>
-          <p class="muted" id="routing_hint_text">{{ routing_policies[0].description }}</p>
-        </div>
-      </div>
-      <label>
-        输入 JSON
-        <textarea id="payload_json" name="payload_json">{{ templates_data[0].sample_payload | tojson(indent=2) }}</textarea>
+      <label>Input payload
+        <textarea id="input-payload"></textarea>
       </label>
-      <button type="submit">启动工作流</button>
+      <button type="submit">Run workflow</button>
+      <div id="run-result" class="subtle"></div>
     </form>
-    {% else %}
-    <div class="empty">当前账号只有查看权限，不能发起新任务。</div>
-    {% endif %}
-  </div>
+  </section>
 
-  <div class="panel">
-    <h3>模板中心</h3>
-    <div class="card-list">
-      {% for template in templates_data %}
-      <article class="item-card">
-        <h4>{{ template.title }}</h4>
-        <p class="muted">{{ template.description }}</p>
-        <div class="meta-row">
-          <span class="badge">{{ template.workflow_type }}</span>
+  <section class="card">
+    <h2>Review queue</h2>
+    <div class="subtle">Runs currently waiting for human approval.</div>
+    <div class="stack" style="margin-top:16px;">
+      {% for row in review_queue %}
+      <a class="card" href="/runs/{{ row.id }}">
+        <strong>{{ row.title }}</strong>
+        <div class="subtle">{{ row.objective }}</div>
+        <div style="margin-top:8px;">
+          <span class="badge status-{{ row.status }}">{{ row.status }}</span>
+          <span class="badge">{{ row.review_score }}</span>
         </div>
-        {% if capabilities.can_run %}
-        <button
-          type="button"
-          class="secondary use-template"
-          data-type="{{ template.workflow_type }}"
-          data-payload='{{ template.sample_payload | tojson }}'
-        >
-          使用这个模板
-        </button>
-        {% endif %}
-      </article>
-      {% endfor %}
-    </div>
-  </div>
-</section>
-
-<section class="split">
-  <div class="panel">
-    <h3>最近运行</h3>
-    {% if recent_runs %}
-    <div class="card-list">
-      {% for run in recent_runs %}
-      <article class="item-card">
-        <h4><a href="/runs/{{ run.id }}">{{ run.title }}</a></h4>
-        <p class="muted">{{ run.objective or "等待目标写入" }}</p>
-        <div class="badge-row">
-          <span class="badge status-{{ run.status }}">{{ run.status }}</span>
-          <span class="badge">{{ run.current_step }}</span>
-          <span class="badge">{{ run.model_name }}</span>
-          <span class="badge">{{ run.prompt_profile_label }}</span>
-          <span class="badge">{{ run.routing_policy_name }}</span>
-          <span class="badge">评分 {{ run.review_score }}</span>
-        </div>
-      </article>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty">还没有运行记录，先创建一个工作流试试。</div>
-    {% endif %}
-  </div>
-
-  <div class="panel">
-    <h3>流程拓扑与实验入口</h3>
-    <div class="badge-row">
-      {% for node in graph.nodes %}
-      <span class="badge">{{ node }}</span>
-      {% endfor %}
-    </div>
-    <p>当前工作流运行时为 {{ graph.runtime }}，入口节点是 {{ graph.entrypoint }}。如果你想比较 Prompt 与多模型路由效果，可以直接进入“模型与 Prompt 对比”和“自动评测”页面查看指标。</p>
-    <div class="badge-row">
-      <a class="button-link secondary" href="/compare">打开对比页</a>
-      <a class="button-link secondary" href="/evaluations">打开评测页</a>
-    </div>
-    {% if capabilities.can_review %}
-      {% if review_queue %}
-      <div class="card-list" style="margin-top: 14px;">
-        {% for run in review_queue %}
-        <article class="item-card">
-          <h4><a href="/runs/{{ run.id }}">{{ run.title }}</a></h4>
-          <p class="muted">等待审核，当前步骤：{{ run.current_step }}</p>
-          <div class="badge-row">
-            <span class="badge status-waiting_human">waiting_human</span>
-            <span class="badge">{{ run.model_name }}</span>
-            <span class="badge">{{ run.prompt_profile_label }}</span>
-            <span class="badge">{{ run.routing_policy_name }}</span>
-            <a class="button-link secondary" href="/reviews">前往审核中心</a>
-          </div>
-        </article>
-        {% endfor %}
-      </div>
+      </a>
       {% else %}
-      <div class="empty" style="margin-top: 14px;">当前没有待审核任务。</div>
-      {% endif %}
-    {% endif %}
-  </div>
+      <div class="subtle">No runs are waiting for review.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="card" style="margin-top:18px;">
+  <h2>Recent runs</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Workflow</th>
+        <th>Status</th>
+        <th>Model</th>
+        <th>Prompt</th>
+        <th>Routing</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in recent_runs %}
+      <tr>
+        <td><a href="/runs/{{ row.id }}"><strong>{{ row.title }}</strong></a><div class="subtle">{{ row.objective }}</div></td>
+        <td><span class="badge status-{{ row.status }}">{{ row.status }}</span></td>
+        <td>{{ row.model_name }}</td>
+        <td>{{ row.prompt_profile_label }}</td>
+        <td>{{ row.routing_policy_name }}</td>
+        <td>{{ row.updated_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="subtle">No runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
-{% endblock %}
 
-{% block scripts %}
 <script>
-  const workflowType = document.getElementById("workflow_type");
-  const payloadEditor = document.getElementById("payload_json");
-  const modelSelect = document.getElementById("model_name");
-  const promptSelect = document.getElementById("prompt_profile_id");
-  const routingSelect = document.getElementById("routing_policy_id");
-  const modelHintText = document.getElementById("model_hint_text");
-  const promptHintText = document.getElementById("prompt_hint_text");
-  const routingHintText = document.getElementById("routing_hint_text");
+  const workflowSelect = document.getElementById("workflow-type");
+  const payloadInput = document.getElementById("input-payload");
+  const resultBox = document.getElementById("run-result");
 
-  const templateMap = new Map();
-  document.querySelectorAll(".use-template").forEach((button) => {
-    templateMap.set(button.dataset.type, button.dataset.payload);
-    button.addEventListener("click", () => {
-      workflowType.value = button.dataset.type;
-      payloadEditor.value = JSON.stringify(JSON.parse(button.dataset.payload), null, 2);
-      payloadEditor.focus();
-    });
-  });
-
-  const modelHints = new Map([
-    {% for model in model_options %}
-    ["{{ model.model_name }}", "{{ model.description }}"],
-    {% endfor %}
-  ]);
-
-  const promptHints = new Map([
-    {% for prompt in prompt_profiles %}
-    ["{{ prompt.profile_id }}", "{{ prompt.description }}"],
-    {% endfor %}
-  ]);
-
-  const routingHints = new Map([
-    {% for item in routing_policies %}
-    ["{{ item.policy_id }}", "{{ item.description }}"],
-    {% endfor %}
-  ]);
-
-  function refreshHints() {
-    modelHintText.textContent = modelHints.get(modelSelect.value) || "";
-    promptHintText.textContent = promptHints.get(promptSelect.value) || "";
-    routingHintText.textContent = routingHints.get(routingSelect.value) || "";
+  function syncPayload() {
+    const option = workflowSelect.options[workflowSelect.selectedIndex];
+    const sample = option.dataset.sample ? JSON.parse(option.dataset.sample) : {};
+    payloadInput.value = JSON.stringify(sample, null, 2);
   }
 
-  workflowType?.addEventListener("change", () => {
-    if (templateMap.has(workflowType.value)) {
-      payloadEditor.value = JSON.stringify(JSON.parse(templateMap.get(workflowType.value)), null, 2);
+  workflowSelect.addEventListener("change", syncPayload);
+  syncPayload();
+
+  document.getElementById("run-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    resultBox.textContent = "Running workflow...";
+    try {
+      const response = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          workflow_type: workflowSelect.value,
+          input_payload: JSON.parse(payloadInput.value || "{}"),
+          model_name_override: document.getElementById("model-name").value,
+          prompt_profile_id: document.getElementById("prompt-profile-id").value,
+          routing_policy_id: document.getElementById("routing-policy-id").value
+        })
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || "Request failed");
+      }
+      resultBox.innerHTML = `Run created. <a href="/runs/${body.id}">Open detail</a>`;
+    } catch (error) {
+      resultBox.textContent = error.message;
     }
   });
-
-  modelSelect?.addEventListener("change", refreshHints);
-  promptSelect?.addEventListener("change", refreshHints);
-  routingSelect?.addEventListener("change", refreshHints);
-  refreshHints();
 </script>
 {% endblock %}

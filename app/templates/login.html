@@ -1,87 +1,27 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>进入工作台 · FlowPilot</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(180deg, #faf7f1 0%, #f2ece2 100%);
-      font-family: "Segoe UI", "PingFang SC", sans-serif;
-      color: #191816;
-    }
-    .shell {
-      width: min(460px, calc(100vw - 24px));
-      padding: 28px;
-      border-radius: 28px;
-      background: rgba(255, 252, 246, 0.96);
-      border: 1px solid #dfd4c6;
-      box-shadow: 0 20px 48px rgba(32, 24, 17, 0.1);
-    }
-    h1 { margin: 0; font-size: 34px; letter-spacing: -0.04em; }
-    p { color: #6b645b; line-height: 1.7; }
-    form { display: grid; gap: 12px; }
-    label { display: grid; gap: 8px; font-weight: 600; font-size: 14px; }
-    input {
-      width: 100%;
-      padding: 12px 14px;
-      border-radius: 14px;
-      border: 1px solid #dfd4c6;
-      background: white;
-      font: inherit;
-    }
-    button {
-      height: 44px;
-      border: 0;
-      border-radius: 14px;
-      background: #191816;
-      color: white;
-      cursor: pointer;
-      font: inherit;
-    }
-    .error {
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: #f8ddd7;
-      color: #b33b2e;
-      border: 1px solid #efc2b8;
-    }
-    .tips {
-      margin-top: 18px;
-      padding: 14px;
-      border-radius: 18px;
-      background: #f8f3ea;
-      border: 1px solid #eadfce;
-      color: #6b645b;
-      line-height: 1.8;
-      font-size: 14px;
-    }
-  </style>
-</head>
-<body>
-  <section class="shell">
-    <h1>进入工作台</h1>
-    <p>登录后可以查看多 Agent 工作流、Prompt 版本、模型路由和自动评测结果。</p>
-    {% if error %}
-    <div class="error">{{ error }}</div>
-    {% endif %}
-    <form method="post" action="/login">
-      <input type="hidden" name="next" value="{{ next }}" />
-      <label>用户名<input name="username" value="" autocomplete="username" /></label>
-      <label>密码<input name="password" type="password" autocomplete="current-password" /></label>
-      <button type="submit">登录</button>
-    </form>
-    <div class="tips">
-      演示账号：<br />
-      `admin / admin123`<br />
-      `reviewer / reviewer123`<br />
-      `operator / operator123`<br />
-      `viewer / viewer123`
+{% extends "base.html" %}
+{% block auth_content %}
+<div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
+  <div class="card" style="width:min(480px, 100%);">
+    <div class="header" style="display:block;margin-bottom:18px;">
+      <h1>FlowPilot</h1>
+      <p>Sign in to open the multi-agent workflow lab.</p>
     </div>
-  </section>
-</body>
-</html>
+    {% if error %}
+    <div class="badge" style="color:var(--bad);margin-bottom:12px;">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>Username<input name="username" autocomplete="username"></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password"></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <div class="card" style="margin-top:16px;">
+      <strong>Demo accounts</strong>
+      <div class="subtle" style="margin-top:8px;">admin / admin123</div>
+      <div class="subtle">reviewer / reviewer123</div>
+      <div class="subtle">operator / operator123</div>
+      <div class="subtle">viewer / viewer123</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

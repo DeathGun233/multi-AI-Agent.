@@ -76,6 +76,7 @@ class LLMCall(BaseModel):
     completion_tokens: int = 0
     total_tokens: int = 0
     latency_ms: int = 0
+    estimated_cost_usd: float = 0.0
     used_fallback: bool = False
     error: str | None = None
 
@@ -201,3 +202,49 @@ class EvaluationRun(BaseModel):
     case_results: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class BatchVariantSpec(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    variant_id: str
+    label: str
+    model_name: str
+    prompt_profile_id: str
+    routing_policy_id: str
+
+
+class BatchExperimentRequest(BaseModel):
+    name: str
+    workflow_type: WorkflowType
+    input_payload: dict[str, Any]
+    variants: list[BatchVariantSpec]
+    repeats: int = 1
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BatchExperimentRun(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str
+    workflow_type: WorkflowType
+    input_payload: dict[str, Any]
+    variants: list[BatchVariantSpec] = Field(default_factory=list)
+    repeats: int = 1
+    summary: dict[str, Any] = Field(default_factory=dict)
+    results: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class FeedbackSample(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    source_run_id: str
+    workflow_type: WorkflowType
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    expected_status: RunStatus
+    reviewer_name: str
+    reviewer_comment: str
+    review_score: float
+    expected_keywords: list[str] = Field(default_factory=list)
+    output_snapshot: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)

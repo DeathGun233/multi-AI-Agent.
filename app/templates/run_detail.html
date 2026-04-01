@@ -1,140 +1,124 @@
 {% extends "base.html" %}
-{% block title %}任务详情 · FlowPilot{% endblock %}
 {% block content %}
-<section class="hero">
-  <h2>{{ run_view.title }}</h2>
-  <p>{{ run.objective }}</p>
-  <div class="badge-row">
-    <span class="badge status-{{ run.status.value }}">{{ run.status.value }}</span>
-    <span class="badge">{{ run.current_step }}</span>
-    <span class="badge">{{ run_view.created_at }}</span>
+<div class="header">
+  <div>
+    <h1>{{ run.workflow_type.value }}</h1>
+    <p>{{ run.objective }}</p>
   </div>
-</section>
+  <div>
+    <span class="badge status-{{ run.status.value }}">{{ run.status.value }}</span>
+    {% if run.review %}<span class="badge">score={{ "%.2f"|format(run.review.score) }}</span>{% endif %}
+  </div>
+</div>
 
-<section class="panel">
-  <h3>图形化执行时间线</h3>
-  <div class="timeline-shell">
-    <div class="timeline-line"></div>
-    {% for point in run_view.timeline %}
-    <div class="timeline-node" style="left: {{ point.left }}%;">
+<div class="grid three">
+  <div class="card">
+    <div class="subtle">Status</div>
+    <div class="metric">{{ run.status.value }}</div>
+    <div class="subtle">Current step: {{ run.current_step }}</div>
+  </div>
+  <div class="card">
+    <div class="subtle">LLM requests</div>
+    <div class="metric">{{ llm_summary.total_requests }}</div>
+    <div class="subtle">Tokens: {{ llm_summary.total_tokens }}</div>
+  </div>
+  <div class="card">
+    <div class="subtle">Total cost</div>
+    <div class="metric">${{ llm_summary.total_cost_usd }}</div>
+    <div class="subtle">Avg latency: {{ llm_summary.avg_latency_ms }} ms</div>
+  </div>
+</div>
+
+<section class="card" style="margin-top:18px;">
+  <h2>Execution timeline</h2>
+  <div class="timeline">
+    {% for point in timeline %}
+    <div class="timeline-point" style="left: {{ point.left }}%;">
       <div class="timeline-dot"></div>
-      <div class="timeline-card">
-        <strong>{{ point.agent }}</strong>
-        <div>{{ point.message }}</div>
-        <span>{{ point.timestamp }} / 耗时 {{ point.duration }}</span>
-        {% if point.tool_name %}
-        <div class="badge-row"><span class="badge">{{ point.tool_name }}</span></div>
-        {% endif %}
-      </div>
+      <strong>{{ point.agent }}</strong>
+      <div class="subtle">{{ point.timestamp }}</div>
     </div>
     {% endfor %}
   </div>
 </section>
 
-<section class="grid three">
-  <div class="metric"><strong>{{ llm_summary.total_requests }}</strong><span class="muted">AI 调用次数</span></div>
-  <div class="metric"><strong>{{ llm_summary.total_tokens }}</strong><span class="muted">累计 Tokens</span></div>
-  <div class="metric"><strong>{{ llm_summary.avg_latency_ms }}</strong><span class="muted">平均耗时 ms</span></div>
-</section>
-
-<section class="split">
-  <div class="panel">
-    <h3>AI 运行指标</h3>
-    <div class="compact-grid">
-      <div class="compare-highlight"><strong>模型</strong><p class="muted">{{ llm_summary.model_names | join(" / ") or "暂无" }}</p></div>
-      <div class="compare-highlight"><strong>路由目标</strong><p class="muted">{{ llm_summary.route_targets | join(" / ") or "暂无" }}</p></div>
-      <div class="compare-highlight"><strong>Prompt 版本</strong><p class="muted">{{ llm_summary.prompt_profiles | join(" / ") or "暂无" }}</p></div>
-      <div class="compare-highlight"><strong>路由策略</strong><p class="muted">{{ llm_summary.routing_policies | join(" / ") or "暂无" }}</p></div>
-    </div>
-    <div class="card-list" style="margin-top: 14px;">
+<div class="grid two" style="margin-top:18px;">
+  <section class="card">
+    <h2>Execution log</h2>
+    <div class="stack">
       {% for log in run.logs %}
+      <div class="card">
+        <strong>{{ log.agent }}</strong>
+        <div>{{ log.message }}</div>
+        <div class="subtle">{{ log.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S") }}</div>
+        {% if log.tool_call %}<div class="badge">{{ log.tool_call.name }}</div>{% endif %}
         {% if log.llm_call %}
-        <article class="item-card">
-          <h4>{{ log.agent }}</h4>
-          <div class="badge-row">
-            <span class="badge">{{ log.llm_call.model_name }}</span>
-            <span class="badge">{{ log.llm_call.route_target }}</span>
-            <span class="badge">{{ log.llm_call.prompt_profile_name }} {{ log.llm_call.prompt_profile_version }}</span>
-            <span class="badge">{{ log.llm_call.routing_policy_name }}</span>
-            <span class="badge">{{ log.llm_call.total_tokens }} tokens</span>
-            <span class="badge">{{ log.llm_call.latency_ms }} ms</span>
-            {% if log.llm_call.used_fallback %}
-            <span class="badge status-failed">fallback</span>
-            {% endif %}
-          </div>
-          <p class="muted">System Prompt：{{ log.llm_call.system_prompt }}</p>
-          <p class="muted">User Prompt：{{ log.llm_call.user_prompt }}</p>
-        </article>
+        <div class="subtle">model={{ log.llm_call.model_name }} · route={{ log.llm_call.route_target }} · latency={{ log.llm_call.latency_ms }} ms · cost=${{ log.llm_call.estimated_cost_usd }}</div>
         {% endif %}
+      </div>
       {% endfor %}
     </div>
-  </div>
+  </section>
 
-  <div class="panel">
-    <h3>执行配置</h3>
-    <div class="card-list">
-      <article class="item-card">
-        <h4>{{ execution_profile.primary_model_label }}</h4>
-        <div class="badge-row"><span class="badge">{{ execution_profile.primary_model_name }}</span></div>
-      </article>
-      <article class="item-card">
-        <h4>{{ execution_profile.prompt_profile_name }} {{ execution_profile.prompt_profile_version }}</h4>
-        <p class="muted">{{ execution_profile.prompt_profile_description }}</p>
-      </article>
-      <article class="item-card">
-        <h4>{{ execution_profile.routing_policy_name }}</h4>
-        <p class="muted">{{ execution_profile.routing_policy_description }}</p>
-      </article>
-    </div>
+  <section class="card">
+    <h2>Review decision</h2>
     {% if run.review %}
-    <div class="panel" style="margin-top: 14px; padding: 16px;">
-      <h3>审核与决策</h3>
-      <div class="badge-row">
-        <span class="badge status-{{ run.review.status.value }}">{{ run.review.status.value }}</span>
-        <span class="badge">needs_human_review={{ run.review.needs_human_review }}</span>
-        <span class="badge">score={{ "%.2f"|format(run.review.score) }}</span>
-      </div>
-      <div class="card-list" style="margin-top: 12px;">
+      <div class="badge">{{ run.review.status.value }}</div>
+      <div class="badge">needs_human_review={{ run.review.needs_human_review }}</div>
+      <div class="badge">score={{ "%.2f"|format(run.review.score) }}</div>
+      <div class="stack" style="margin-top:12px;">
         {% for reason in run.review.reasons %}
-        <article class="item-card">{{ reason }}</article>
+        <div class="card">{{ reason }}</div>
         {% endfor %}
       </div>
-      {% if capabilities.can_review and run.status.value == "waiting_human" %}
-      <form method="post" action="/runs/{{ run.id }}/review/form" style="margin-top: 14px;">
-        <input type="hidden" name="next_page" value="detail" />
-        <label>人工审核备注<textarea name="comment" placeholder="输入人工判断和处理说明"></textarea></label>
-        <div class="badge-row">
-          <button type="submit" name="decision" value="approve">审核通过</button>
-          <button type="submit" name="decision" value="reject" class="danger">驳回任务</button>
-        </div>
-      </form>
-      {% endif %}
-    </div>
+    {% else %}
+      <div class="subtle">No review decision yet.</div>
     {% endif %}
-  </div>
+    {% if capabilities.can_review and run.status.value == "waiting_human" %}
+    <form id="review-form" class="stack" style="margin-top:16px;">
+      <label>Reviewer comment
+        <textarea id="review-comment" placeholder="Add manual review notes"></textarea>
+      </label>
+      <div style="display:flex;gap:12px;">
+        <button type="button" onclick="submitReview(true)">Approve</button>
+        <button type="button" class="secondary" onclick="submitReview(false)">Reject</button>
+      </div>
+      <div id="review-result" class="subtle"></div>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card" style="margin-top:18px;">
+  <h2>Result JSON</h2>
+  <pre>{{ result_json }}</pre>
 </section>
 
-<section class="split">
-  <div class="panel">
-    <h3>执行日志</h3>
-    <div class="card-list">
-      {% for log in run.logs %}
-      <article class="item-card">
-        <h4>{{ log.agent }}</h4>
-        <p>{{ log.message }}</p>
-        <div class="badge-row">
-          <span class="badge">{{ log.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S") }}</span>
-          {% if log.tool_call %}
-          <span class="badge">{{ log.tool_call.name }}</span>
-          {% endif %}
-        </div>
-      </article>
-      {% endfor %}
-    </div>
-  </div>
-  <div class="panel">
-    <h3>结果 JSON</h3>
-    <pre>{{ run_result_json }}</pre>
-  </div>
+<section class="card" style="margin-top:18px;">
+  <h2>Graph shape</h2>
+  <pre>{{ graph | tojson(indent=2) }}</pre>
 </section>
+
+{% if capabilities.can_review and run.status.value == "waiting_human" %}
+<script>
+  async function submitReview(approve) {
+    const resultBox = document.getElementById("review-result");
+    resultBox.textContent = "Submitting review...";
+    const response = await fetch("/api/workflows/{{ run.id }}/review", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        approve,
+        comment: document.getElementById("review-comment").value
+      })
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      resultBox.textContent = body.detail || "Failed to submit review";
+      return;
+    }
+    window.location.reload();
+  }
+</script>
+{% endif %}
 {% endblock %}

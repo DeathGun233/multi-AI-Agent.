@@ -37,11 +37,7 @@ class UserAccountRecord(Base):
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -63,11 +59,7 @@ class PromptProfileRecord(Base):
     reviewer_instruction: Mapped[str] = mapped_column(Text, nullable=False)
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -88,6 +80,37 @@ class EvaluationRunRecord(Base):
     case_results_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class BatchExperimentRunRecord(Base):
+    __tablename__ = "batch_experiment_runs"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_type: Mapped[str] = mapped_column(Text, nullable=False)
+    input_payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    variants_json: Mapped[str] = mapped_column(Text, nullable=False)
+    repeats: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_json: Mapped[str] = mapped_column(Text, nullable=False)
+    results_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class FeedbackSampleRecord(Base):
+    __tablename__ = "feedback_samples"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    source_run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_type: Mapped[str] = mapped_column(Text, nullable=False)
+    input_payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_status: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewer_name: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewer_comment: Mapped[str] = mapped_column(Text, nullable=False)
+    review_score: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_keywords_json: Mapped[str] = mapped_column(Text, nullable=False)
+    output_snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Database:
