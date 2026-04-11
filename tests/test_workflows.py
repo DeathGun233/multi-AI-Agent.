@@ -151,12 +151,16 @@ def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
     assert body["result"]["execution_profile"]["routing_policy"]["policy_id"] == "balanced-router-v1"
     assert "planning_context" in body["result"]
     assert "memory" in body["result"]["planning_context"]
+    assert "operator_context" in body["result"]
+    assert len(body["result"]["operator_context"]["used_tools"]) >= 1
     planner_logs = [log for log in body["logs"] if log["agent"] == "PlannerAgent"]
     assert len(planner_logs) == 1
     assert planner_logs[0]["tool_call"]["name"] == "planning_context_tool"
+    operator_logs = [log for log in body["logs"] if log["agent"] == "OperatorAgent" and log.get("tool_call")]
+    assert len(operator_logs) >= 1
     llm_logs = [log for log in body["logs"] if log.get("llm_call")]
-    assert len(llm_logs) == 4
-    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "analyst", "content", "reviewer"}
+    assert len(llm_logs) >= 5
+    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "operator", "analyst", "content", "reviewer"}
 
 
 def test_waiting_human_reasons_do_not_include_auto_execute_copy() -> None:

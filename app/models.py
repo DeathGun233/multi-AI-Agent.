@@ -125,6 +125,30 @@ class WorkflowPlan(BaseModel):
     expected_outputs: list[str]
 
 
+class OperatorDecision(BaseModel):
+    action: Literal["use_tool", "finish"]
+    selected_tool: str | None = None
+    tool_input: dict[str, Any] = Field(default_factory=dict)
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("reason cannot be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_selected_tool(self) -> "OperatorDecision":
+        if self.action == "use_tool" and not (self.selected_tool and self.selected_tool.strip()):
+            raise ValueError("selected_tool is required when action is use_tool")
+        if self.action == "finish":
+            self.selected_tool = None
+            self.tool_input = {}
+        return self
+
+
 class WorkflowRun(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     workflow_type: WorkflowType

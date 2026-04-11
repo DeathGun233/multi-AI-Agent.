@@ -76,25 +76,25 @@ ROUTING_POLICIES = (
         policy_id="single-model-v1",
         name="单模型直连",
         description="所有 Agent 共用同一个主模型，适合基础对比。",
-        route_templates={"planner": "{primary}", "analyst": "{primary}", "content": "{primary}", "reviewer": "{primary}"},
+        route_templates={"planner": "{primary}", "operator": "{primary}", "analyst": "{primary}", "content": "{primary}", "reviewer": "{primary}"},
     ),
     RoutingPolicyDefinition(
         policy_id="balanced-router-v1",
         name="均衡路由",
         description="分析使用主模型，内容生成走更快模型，审核固定走高质量模型。",
-        route_templates={"planner": "{primary}", "analyst": "{primary}", "content": "qwen-turbo", "reviewer": "qwen3-max"},
+        route_templates={"planner": "{primary}", "operator": "qwen-turbo", "analyst": "{primary}", "content": "qwen-turbo", "reviewer": "qwen3-max"},
     ),
     RoutingPolicyDefinition(
         policy_id="speed-router-v1",
         name="速度优先路由",
         description="分析和内容都走更快模型，规划与审核保留主模型。",
-        route_templates={"planner": "{primary}", "analyst": "qwen-turbo", "content": "qwen-turbo", "reviewer": "{primary}"},
+        route_templates={"planner": "{primary}", "operator": "qwen-turbo", "analyst": "qwen-turbo", "content": "qwen-turbo", "reviewer": "{primary}"},
     ),
     RoutingPolicyDefinition(
         policy_id="strict-review-v1",
         name="严格审核路由",
         description="审核固定使用高质量模型，适合高风险场景。",
-        route_templates={"planner": "{primary}", "analyst": "{primary}", "content": "{primary}", "reviewer": "qwen3-max"},
+        route_templates={"planner": "{primary}", "operator": "{primary}", "analyst": "{primary}", "content": "{primary}", "reviewer": "qwen3-max"},
     ),
 )
 
