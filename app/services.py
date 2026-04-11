@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from statistics import mean
@@ -56,6 +57,7 @@ class WorkflowState(TypedDict, total=False):
     request: WorkflowRequest
     execution_profile: ExecutionProfile
     prompt_profile: PromptProfile
+    planning_context: dict[str, Any]
     raw_result: dict[str, Any]
     analysis: dict[str, Any]
     deliverables: dict[str, Any]
@@ -83,6 +85,89 @@ class EvaluationDatasetRuntime:
     name: str
     description: str
     cases: list[EvaluationCaseDefinition]
+
+
+class AgentMemoryService:
+    def __init__(self, repository: WorkflowRepository) -> None:
+        self.repository = repository
+
+    def planner_memory(self, request: WorkflowRequest, *, run_limit: int = 3, feedback_limit: int = 3) -> dict[str, Any]:
+        related_runs = [
+            run for run in self.repository.list_all()
+            if run.workflow_type == request.workflow_type and run.result
+        ][:run_limit]
+        related_feedback = [
+            sample for sample in self.repository.list_feedback_samples()
+            if sample.workflow_type == request.workflow_type
+        ][:feedback_limit]
+
+        keyword_counter: Counter[str] = Counter()
+        review_reason_counter: Counter[str] = Counter()
+        run_rows = []
+        for run in related_runs:
+            analysis = run.result.get("analysis", {}) if isinstance(run.result, dict) else {}
+            review = run.result.get("review", {}) if isinstance(run.result, dict) else {}
+            reasons = [str(item).strip() for item in review.get("reasons", []) if str(item).strip()]
+            review_reason_counter.update(reasons)
+            run_rows.append(
+                {
+                    "run_id": run.id,
+                    "status": run.status.value,
+                    "objective": run.objective,
+                    "summary": analysis.get("summary", ""),
+                    "review_reasons": reasons[:2],
+                    "updated_at": run.updated_at.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+
+        feedback_rows = []
+        for sample in related_feedback:
+            keywords = [str(item).strip() for item in sample.expected_keywords if str(item).strip()]
+            keyword_counter.update(keywords)
+            feedback_rows.append(
+                {
+                    "sample_id": sample.id,
+                    "expected_status": sample.expected_status.value,
+                    "reviewer_name": sample.reviewer_name,
+                    "comment": sample.reviewer_comment,
+                    "keywords": keywords[:5],
+                    "created_at": sample.created_at.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+
+        return {
+            "recent_runs": run_rows,
+            "feedback_samples": feedback_rows,
+            "dominant_keywords": [item for item, _ in keyword_counter.most_common(6)],
+            "common_review_reasons": [item for item, _ in review_reason_counter.most_common(4)],
+        }
+
+
+class PlanningContextTool:
+    def __init__(self, memory_service: AgentMemoryService) -> None:
+        self.memory_service = memory_service
+
+    def run(self, request: WorkflowRequest) -> tuple[dict[str, Any], ToolCall]:
+        workflow_template = next(
+            (item for item in WORKFLOW_TEMPLATES if item.workflow_type == request.workflow_type),
+            None,
+        )
+        memory = self.memory_service.planner_memory(request)
+        context = {
+            "workflow_template": {
+                "workflow_type": request.workflow_type.value,
+                "title": workflow_template.title if workflow_template else request.workflow_type.value,
+                "description": workflow_template.description if workflow_template else "",
+                "sample_payload": workflow_template.sample_payload if workflow_template else {},
+            },
+            "input_payload_keys": sorted(request.input_payload.keys()),
+            "memory": memory,
+        }
+        return context, ToolCall(
+            name="planning_context_tool",
+            input=request.model_dump(mode="json"),
+            output=context,
+        )
 
 
 class PromptProfileService:
@@ -137,9 +222,53 @@ class PromptProfileService:
 
 
 class PlannerAgent:
-    def plan(self, request: WorkflowRequest) -> WorkflowPlan:
-        title = self._workflow_title(request.workflow_type)
-        objective = self._objective(request.workflow_type, request.input_payload)
+    def __init__(self, llm_service: LLMService, planning_context_tool: PlanningContextTool) -> None:
+        self.llm_service = llm_service
+        self.planning_context_tool = planning_context_tool
+
+    def plan(
+        self,
+        *,
+        request: WorkflowRequest,
+        execution_profile: ExecutionProfile,
+        prompt_profile: PromptProfile,
+    ) -> tuple[WorkflowPlan, dict[str, Any], ToolCall, Any]:
+        fallback = self._fallback_plan(request)
+        planning_context, tool_call = self.planning_context_tool.run(request)
+        system_prompt = (
+            "你是企业 AI 工作流中的 PlannerAgent。"
+            "请结合任务输入、工作流模板和历史经验，输出一个结构化执行计划。"
+            "必须返回 JSON，键为 workflow_type、objective、steps、expected_outputs。"
+            "steps 需要可执行且有顺序，expected_outputs 需要与后续 agent 的产出一致。"
+        )
+        user_prompt = (
+            f"当前 Prompt 方案：{prompt_profile.name} {prompt_profile.version}\n"
+            f"方案描述：{prompt_profile.description}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"任务输入 JSON：\n{json.dumps(request.input_payload, ensure_ascii=False)}\n"
+            f"规划上下文工具结果 JSON：\n{json.dumps(planning_context, ensure_ascii=False)}\n"
+            "请生成适合当前任务的规划，若历史反馈里出现风险或缺口，请在 objective 或 steps 中体现。"
+        )
+        response = self.llm_service.generate_json(
+            route_target="planner",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            fallback=fallback.model_dump(mode="json"),
+            execution_profile=execution_profile,
+            response_model=WorkflowPlan,
+        )
+        payload = response.payload
+        payload.setdefault("workflow_type", request.workflow_type.value)
+        payload.setdefault("objective", fallback.objective)
+        payload.setdefault("steps", fallback.steps)
+        payload.setdefault("expected_outputs", fallback.expected_outputs)
+        plan = WorkflowPlan(**payload)
+        return plan, planning_context, tool_call, response.call
+
+    @staticmethod
+    def _fallback_plan(request: WorkflowRequest) -> WorkflowPlan:
+        title = PlannerAgent._workflow_title(request.workflow_type)
+        objective = PlannerAgent._objective(request.workflow_type, request.input_payload)
         steps = {
             WorkflowType.SALES_FOLLOWUP: [
                 "Aggregate funnel metrics",
@@ -706,10 +835,12 @@ class WorkflowEngine:
         self.repository = repository
         self.settings = settings
         self.prompt_profiles = PromptProfileService(repository)
+        self.memory_service = AgentMemoryService(repository)
+        self.planning_context_tool = PlanningContextTool(self.memory_service)
         self.external_data = ExternalDataService(settings)
         self.tool_center = ToolCenter(self.external_data)
         self.llm_service = LLMService(settings)
-        self.planner_agent = PlannerAgent()
+        self.planner_agent = PlannerAgent(self.llm_service, self.planning_context_tool)
         self.analyst_agent = AnalystAgent(self.llm_service)
         self.content_agent = ContentAgent(self.llm_service)
         self.reviewer_agent = ReviewerAgent(self.llm_service)
@@ -757,12 +888,9 @@ class WorkflowEngine:
             model_name_override=request.model_name_override,
             routing_policy_id=request.routing_policy_id,
         )
-        plan = self.planner_agent.plan(request)
         run = WorkflowRun(
             workflow_type=request.workflow_type,
             input_payload=request.input_payload,
-            plan=plan,
-            objective=plan.objective,
         )
         initial_state: WorkflowState = {
             "run": run,
@@ -848,8 +976,22 @@ class WorkflowEngine:
 
     def _planner_step(self, state: WorkflowState) -> WorkflowState:
         run = state["run"]
+        request = state["request"]
         run.touch(status=RunStatus.PLANNING, current_step="planner")
-        run.add_log("PlannerAgent", f"已生成执行计划，共 {len(run.plan.steps if run.plan else [])} 步。")
+        plan, planning_context, tool_call, llm_call = self.planner_agent.plan(
+            request=request,
+            execution_profile=state["execution_profile"],
+            prompt_profile=state["prompt_profile"],
+        )
+        run.plan = plan
+        run.objective = plan.objective
+        state["planning_context"] = planning_context
+        run.add_log(
+            "PlannerAgent",
+            f"已生成动态执行计划，共 {len(plan.steps)} 步，并注入规划上下文与历史记忆。",
+            tool_call=tool_call,
+            llm_call=llm_call,
+        )
         return state
 
     def _operator_step(self, state: WorkflowState) -> WorkflowState:
@@ -906,6 +1048,7 @@ class WorkflowEngine:
         run.review = review
         run.result = {
             "execution_profile": state["execution_profile"].model_dump(mode="json"),
+            "planning_context": state.get("planning_context", {}),
             "raw_result": state["raw_result"],
             "analysis": state["analysis"],
             "deliverables": state["deliverables"],

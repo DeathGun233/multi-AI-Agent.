@@ -149,9 +149,14 @@ def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
     assert body["result"]["execution_profile"]["primary_model_name"] == "qwen-plus"
     assert body["result"]["execution_profile"]["prompt_profile"]["profile_id"] == "ops-deep-v1"
     assert body["result"]["execution_profile"]["routing_policy"]["policy_id"] == "balanced-router-v1"
+    assert "planning_context" in body["result"]
+    assert "memory" in body["result"]["planning_context"]
+    planner_logs = [log for log in body["logs"] if log["agent"] == "PlannerAgent"]
+    assert len(planner_logs) == 1
+    assert planner_logs[0]["tool_call"]["name"] == "planning_context_tool"
     llm_logs = [log for log in body["logs"] if log.get("llm_call")]
-    assert len(llm_logs) == 3
-    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"analyst", "content", "reviewer"}
+    assert len(llm_logs) == 4
+    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "analyst", "content", "reviewer"}
 
 
 def test_waiting_human_reasons_do_not_include_auto_execute_copy() -> None:
