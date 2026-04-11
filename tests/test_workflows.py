@@ -74,6 +74,10 @@ def test_seeded_users_are_persisted_with_password_hash() -> None:
         assert record.password_hash != "admin123"
 
 
+def test_pytest_uses_isolated_database_file() -> None:
+    assert "flowpilot_test.db" in str(database.engine.url)
+
+
 def test_root_redirects_to_login() -> None:
     anonymous = TestClient(app)
     response = anonymous.get("/", follow_redirects=False)

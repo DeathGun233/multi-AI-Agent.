@@ -29,13 +29,14 @@ class Settings:
             or os.getenv("OPENAI_API_KEY")
             or os.getenv("OPEN_AI_KEY")
         )
+        pytest_mode = bool(os.getenv("PYTEST_CURRENT_TEST")) or ("pytest" in sys.modules)
         disable_llm = (
             bool(os.getenv("FLOWPILOT_DISABLE_LLM"))
-            or bool(os.getenv("PYTEST_CURRENT_TEST"))
-            or ("pytest" in sys.modules)
+            or pytest_mode
         )
+        default_database_url = "sqlite:///flowpilot_test.db" if pytest_mode else "sqlite:///flowpilot.db"
         return cls(
-            database_url=os.getenv("DATABASE_URL", "sqlite:///flowpilot.db"),
+            database_url=os.getenv("DATABASE_URL", default_database_url),
             redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
             model_name=os.getenv("MODEL_NAME", "qwen3-max"),
             model_base_url=os.getenv("MODEL_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
