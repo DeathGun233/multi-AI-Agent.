@@ -1,0 +1,553 @@
+{
+  "database_url": "sqlite:///flowpilot.db",
+  "mode": "dry-run",
+  "candidate_count": 60,
+  "reason_counts": {
+    "pytest_support_fixture": 28,
+    "pytest_sales_fixture": 32
+  },
+  "candidate_ids": [
+    "22a15db5-d687-4439-bf29-0325465c6581",
+    "4d553187-7f76-4d81-a5bc-0a43c5d613c9",
+    "deb330de-a598-4def-ae88-63be05b63455",
+    "92a8d91e-7728-4682-afff-a2d548c028dd",
+    "a8bda6e4-7e49-4d69-92f6-eda0170b764e",
+    "917de8a8-cbd0-41bb-b414-39a0074266dc",
+    "203ef9ba-5292-43c3-a2ff-2bdcdf8c9edf",
+    "e65d94a0-3277-4366-8689-77c29531bd97",
+    "c46303ab-b553-4fd6-b697-b0a4cc2fb575",
+    "b7b3d328-4b65-4df8-b6fd-8f3db3ffb9fe",
+    "6d6714da-924e-4841-b688-6532cd545d55",
+    "b2858717-9ecc-4409-85a0-6c52aee87bb9",
+    "4e5747e3-750e-4616-9bf5-6f9bcabcbd39",
+    "e39ee0aa-dbc3-41f0-afce-e814f2532536",
+    "68f18036-a7cf-43c1-b32c-d1d40e5f37b6",
+    "827334b7-7f72-4dad-b107-9c5a9a8030eb",
+    "c1de8307-a6cb-48c4-bd74-568f41f41739",
+    "c43aba45-ef71-4be6-82b8-32c63cab6e0a",
+    "9660ddfc-cf24-4a75-819d-1bd63b305fb6",
+    "2de26ea2-3bec-42ca-9d43-7d3451d391ef",
+    "7570374a-6101-4bf3-9e1d-fa9779670dd2",
+    "d89ecf11-f4d7-45a1-b1a9-78ef4764ba59",
+    "c3c0d474-4a7e-496b-8c17-5a1c3f7618c3",
+    "9fc8e817-85ed-4d8a-8ba2-eefb7537477a",
+    "d3152911-471b-4283-be26-94907c4012c0",
+    "667f9af5-70cc-4445-8426-58a4b7cd7385",
+    "25ba8b97-9b66-4a40-90c9-44eed09d2802",
+    "e4d31af2-a459-4ef2-92b3-6c6613f11546",
+    "f38b3220-6b0a-4ab1-9c10-5e397e06586e",
+    "07b8fdbb-3751-4af6-99cb-52053804aae4",
+    "f6513163-0aa6-4cc2-ba80-5ccda8cc39ff",
+    "dfab4f35-4cae-406e-9606-efeeafbbb08f",
+    "ec928ac6-9582-42b3-9d08-57f45ad38352",
+    "080b5d6c-037f-4406-9179-7bb63444d1a3",
+    "0996604a-5bad-40cb-b029-e0d9f775cc4d",
+    "1fec8c58-6aff-40a6-b8ef-017257871756",
+    "7cda383a-024b-42ac-976f-e5240790062b",
+    "c3a8aff2-1831-4555-bb0c-79225912062b",
+    "ff1db9e4-25b2-4a54-896d-0a3923db82a2",
+    "3b85657e-8e33-48ef-85da-aeb6ed2a2ee1",
+    "1f101abe-921f-4c25-a165-6b65c38e0f24",
+    "5be2633a-f66d-448f-a9d9-5b82b42f1667",
+    "9eb6b601-d916-4924-96ca-68723e81cf3a",
+    "b0fd0916-4a88-4b9b-ae3a-2e58936a8dbd",
+    "b0817002-2d4a-4835-9352-64adbcc6e12b",
+    "1992c93c-a945-4d04-a87e-5e9268222efb",
+    "c514f2d0-1b8d-4429-b1cd-dcd7ad57ead9",
+    "8a21e7c7-8a03-4cd8-8f2e-99ca9a10df04",
+    "397e2774-5a7a-42d3-bcaa-d756c44b0689",
+    "c99f7269-df07-482d-b7c0-5052cc4f1aef",
+    "04083e51-3f65-4df2-a36b-d5ca7cfd3332",
+    "b8fd81fa-60e1-44ca-a597-c6923ffe5c75",
+    "359633e1-b631-429e-90e4-1fbffce9389a",
+    "df505913-678e-4ad7-a668-1c8a9ec0d083",
+    "7a464452-a236-4091-8a3c-d63ddf8ec92b",
+    "910a40aa-8175-4079-86e1-d7e72a37845b",
+    "325125ac-a1f9-4a30-8d8a-8d209b6a8c4c",
+    "e504f1d3-72e1-4054-8daf-5cc773af3e1e",
+    "aa793d92-f55e-451b-8050-376045937218",
+    "324e48e3-ba8b-4fa4-897c-4ea802516d06"
+  ],
+  "rows": [
+    {
+      "id": "22a15db5-d687-4439-bf29-0325465c6581",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T16:52:29.681651+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "4d553187-7f76-4d81-a5bc-0a43c5d613c9",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T16:52:27.453054+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "deb330de-a598-4def-ae88-63be05b63455",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T16:52:26.147990+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "92a8d91e-7728-4682-afff-a2d548c028dd",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T16:52:21.857848+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "a8bda6e4-7e49-4d69-92f6-eda0170b764e",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T16:52:19.625186+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "917de8a8-cbd0-41bb-b414-39a0074266dc",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T16:52:16.276986+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "203ef9ba-5292-43c3-a2ff-2bdcdf8c9edf",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T16:52:15.142857+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "e65d94a0-3277-4366-8689-77c29531bd97",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T16:52:13.936081+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "c46303ab-b553-4fd6-b697-b0a4cc2fb575",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T13:33:42.002483+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "b7b3d328-4b65-4df8-b6fd-8f3db3ffb9fe",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:33:38.866405+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "6d6714da-924e-4841-b688-6532cd545d55",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:33:37.449428+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "b2858717-9ecc-4409-85a0-6c52aee87bb9",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:33:32.873493+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "4e5747e3-750e-4616-9bf5-6f9bcabcbd39",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:33:30.614545+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "e39ee0aa-dbc3-41f0-afce-e814f2532536",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T13:33:27.101086+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "68f18036-a7cf-43c1-b32c-d1d40e5f37b6",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:33:25.880568+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "827334b7-7f72-4dad-b107-9c5a9a8030eb",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:33:24.437139+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "c1de8307-a6cb-48c4-bd74-568f41f41739",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:32:46.149463+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "c43aba45-ef71-4be6-82b8-32c63cab6e0a",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T13:29:08.363858+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "9660ddfc-cf24-4a75-819d-1bd63b305fb6",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T12:56:51.526279+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "2de26ea2-3bec-42ca-9d43-7d3451d391ef",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:56:48.747353+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "7570374a-6101-4bf3-9e1d-fa9779670dd2",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:56:47.334354+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "d89ecf11-f4d7-45a1-b1a9-78ef4764ba59",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:56:42.604334+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "c3c0d474-4a7e-496b-8c17-5a1c3f7618c3",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:56:40.310945+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "9fc8e817-85ed-4d8a-8ba2-eefb7537477a",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T12:56:36.735722+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "d3152911-471b-4283-be26-94907c4012c0",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:56:35.386538+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "667f9af5-70cc-4445-8426-58a4b7cd7385",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T12:51:55.392727+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "25ba8b97-9b66-4a40-90c9-44eed09d2802",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:51:52.900077+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "e4d31af2-a459-4ef2-92b3-6c6613f11546",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:51:51.578506+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "f38b3220-6b0a-4ab1-9c10-5e397e06586e",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:51:47.057560+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "07b8fdbb-3751-4af6-99cb-52053804aae4",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:51:44.776606+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "f6513163-0aa6-4cc2-ba80-5ccda8cc39ff",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T12:51:41.279105+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "dfab4f35-4cae-406e-9606-efeeafbbb08f",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T12:51:40.027941+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "ec928ac6-9582-42b3-9d08-57f45ad38352",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T04:21:39.462796+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "080b5d6c-037f-4406-9179-7bb63444d1a3",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T04:21:37.572891+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "0996604a-5bad-40cb-b029-e0d9f775cc4d",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T04:21:36.337101+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "1fec8c58-6aff-40a6-b8ef-017257871756",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T04:21:32.057122+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "7cda383a-024b-42ac-976f-e5240790062b",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T04:21:29.907733+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "c3a8aff2-1831-4555-bb0c-79225912062b",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-11T04:21:26.599311+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "ff1db9e4-25b2-4a54-896d-0a3923db82a2",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-11T04:21:25.498077+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "3b85657e-8e33-48ef-85da-aeb6ed2a2ee1",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-10T14:29:48.331731+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "1f101abe-921f-4c25-a165-6b65c38e0f24",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:46.283349+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "5be2633a-f66d-448f-a9d9-5b82b42f1667",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:44.979195+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "9eb6b601-d916-4924-96ca-68723e81cf3a",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:40.619883+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "b0fd0916-4a88-4b9b-ae3a-2e58936a8dbd",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:38.440878+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "b0817002-2d4a-4835-9352-64adbcc6e12b",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-10T14:29:35.097043+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "1992c93c-a945-4d04-a87e-5e9268222efb",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:33.968020+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "c514f2d0-1b8d-4429-b1cd-dcd7ad57ead9",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-10T14:29:03.939588+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "8a21e7c7-8a03-4cd8-8f2e-99ca9a10df04",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:01.968602+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "397e2774-5a7a-42d3-bcaa-d756c44b0689",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:29:00.710513+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "c99f7269-df07-482d-b7c0-5052cc4f1aef",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:28:56.257859+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "04083e51-3f65-4df2-a36b-d5ca7cfd3332",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:28:54.006981+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "b8fd81fa-60e1-44ca-a597-c6923ffe5c75",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-10T14:28:50.628523+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "359633e1-b631-429e-90e4-1fbffce9389a",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T14:28:49.004129+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "df505913-678e-4ad7-a668-1c8a9ec0d083",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-10T13:58:51.089148+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "7a464452-a236-4091-8a3c-d63ddf8ec92b",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T13:58:49.306111+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "910a40aa-8175-4079-86e1-d7e72a37845b",
+      "workflow_type": "support_triage",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T13:58:47.953288+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "325125ac-a1f9-4a30-8d8a-8d209b6a8c4c",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T13:58:43.453954+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "e504f1d3-72e1-4054-8daf-5cc773af3e1e",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T13:58:41.261829+00:00",
+      "reason": "pytest_sales_fixture"
+    },
+    {
+      "id": "aa793d92-f55e-451b-8050-376045937218",
+      "workflow_type": "support_triage",
+      "status": "completed",
+      "current_step": "human_review",
+      "created_at": "2026-04-10T13:58:37.947209+00:00",
+      "reason": "pytest_support_fixture"
+    },
+    {
+      "id": "324e48e3-ba8b-4fa4-897c-4ea802516d06",
+      "workflow_type": "sales_followup",
+      "status": "waiting_human",
+      "current_step": "waiting_human",
+      "created_at": "2026-04-10T13:58:36.792870+00:00",
+      "reason": "pytest_sales_fixture"
+    }
+  ]
+}

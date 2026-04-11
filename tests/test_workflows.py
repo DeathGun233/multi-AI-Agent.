@@ -3,6 +3,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.cleanup import classify_run_pollution_reason, find_test_pollution_candidates
 from app.db import UserAccountRecord
 from app.main import _build_llm_summary, app, database
 from app.models import LLMCall, WorkflowLog, WorkflowRun, WorkflowType
@@ -491,3 +492,61 @@ def test_cost_summary_excludes_fallback_calls_and_tracks_them_separately() -> No
     assert summary["total_tokens"] == 150
     assert summary["llm_call_count"] == 1
     assert summary["fallback_requests"] == 1
+
+
+def test_cleanup_detector_matches_known_pytest_sales_fixture() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        input_payload={
+            "period": "2026-W13",
+            "region": "华东",
+            "sales_reps": ["王晨", "李雪"],
+            "focus_metric": "conversion_rate",
+        },
+    )
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="fallback",
+            llm_call=LLMCall(
+                model_name="qwen-plus",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=True,
+                error="llm_disabled",
+            ),
+        )
+    ]
+
+    assert classify_run_pollution_reason(run) == "pytest_sales_fixture"
+    assert [item.id for item in find_test_pollution_candidates([run])] == [run.id]
+
+
+def test_cleanup_detector_does_not_match_real_llm_run() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        input_payload={
+            "period": "2026-W13",
+            "region": "华东",
+            "sales_reps": ["王晨", "李雪"],
+            "focus_metric": "conversion_rate",
+        },
+    )
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="real",
+            llm_call=LLMCall(
+                model_name="qwen-plus",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=False,
+                total_tokens=123,
+            ),
+        )
+    ]
+
+    assert classify_run_pollution_reason(run) is None
+    assert find_test_pollution_candidates([run]) == []
