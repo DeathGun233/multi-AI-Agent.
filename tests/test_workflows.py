@@ -400,7 +400,28 @@ def test_runtime_memory_context_is_recorded_for_content_agent() -> None:
     assert content_context["memory_hits"] >= 1
     assert len(content_context["memory"]["recent_runs"]) >= 1
     assert len(content_context["memory"]["feedback_samples"]) >= 1
-    assert any("鍘嗗彶璁板繂" in log["message"] for log in second["logs"] if log["agent"] == "ContentAgent")
+    assert any("历史记忆" in log["message"] for log in second["logs"] if log["agent"] == "ContentAgent")
+
+
+def test_run_detail_page_shows_runtime_memory_summary() -> None:
+    first = create_support_run()
+    login_as("reviewer", "reviewer123")
+    reviewed = client.post(
+        f"/api/workflows/{first['id']}/review",
+        json={"approve": True, "comment": "keep owner and risk notes"},
+    )
+    assert reviewed.status_code == 200
+
+    second = create_support_run()
+
+    detail = client.get(f"/runs/{second['id']}")
+
+    assert detail.status_code == 200
+    assert "运行时记忆" in detail.text
+    assert "AnalystAgent" in detail.text
+    assert "ContentAgent" in detail.text
+    assert "ReviewerAgent" in detail.text
+    assert "memory hits" in detail.text
 
 
 def test_settings_can_disable_runtime_memory(monkeypatch) -> None:

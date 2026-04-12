@@ -1323,7 +1323,7 @@ class WorkflowEngine:
         run.add_log("ContentAgent", "已补充可直接使用的业务输出。", llm_call=llm_call)
         run.add_log(
             "ContentAgent",
-            f"鍘嗗彶璁板繂宸叉敞鍏?{content_context['memory_hits']} 鏉★紝鐢ㄤ簬鐢熸垚涓氬姟杈撳嚭銆?",
+            f"已注入 {content_context['memory_hits']} 条历史记忆，用于生成业务输出。",
         )
         state["deliverables"] = deliverables
         state["content_context"] = content_context

@@ -116,6 +116,81 @@
   </section>
 </div>
 
+{% if runtime_memory_sections %}
+<section class="card" style="margin-top:18px;">
+  <div class="toolbar" style="justify-content:space-between;">
+    <h2 style="margin:0;">运行时记忆</h2>
+    <span class="badge">{{ runtime_memory_sections|length }} 个 agent context</span>
+  </div>
+  <div class="grid three" style="margin-top:16px;">
+    {% for section in runtime_memory_sections %}
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;">
+        <strong>{{ section.agent }}</strong>
+        <span class="badge">memory hits {{ section.memory_hits }}</span>
+      </div>
+
+      {% if section.dominant_keywords %}
+      <div class="subtle" style="margin-top:10px;">高频关键词：{{ section.dominant_keywords | join(" / ") }}</div>
+      {% endif %}
+
+      {% if section.common_review_reasons %}
+      <div class="subtle" style="margin-top:8px;">常见审核原因：{{ section.common_review_reasons | join(" / ") }}</div>
+      {% endif %}
+
+      <details style="margin-top:12px;">
+        <summary>近期运行样本（{{ section.recent_runs|length }}）</summary>
+        {% if section.recent_runs %}
+        <div class="stack" style="margin-top:12px;">
+          {% for row in section.recent_runs %}
+          <div class="card">
+            <strong>{{ row.title }}</strong>
+            {% if row.meta %}<div class="subtle">{{ row.meta }}</div>{% endif %}
+            {% if row.summary %}<div style="margin-top:8px;">{{ row.summary }}</div>{% endif %}
+            {% if row.tags %}
+            <div class="toolbar" style="margin-top:10px;">
+              {% for tag in row.tags %}
+              <span class="badge">{{ tag }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="subtle" style="margin-top:10px;">暂无近期运行样本。</div>
+        {% endif %}
+      </details>
+
+      <details style="margin-top:12px;">
+        <summary>反馈样本（{{ section.feedback_samples|length }}）</summary>
+        {% if section.feedback_samples %}
+        <div class="stack" style="margin-top:12px;">
+          {% for sample in section.feedback_samples %}
+          <div class="card">
+            <strong>{{ sample.reviewer_name or "匿名审核" }}</strong>
+            {% if sample.meta %}<div class="subtle">{{ sample.meta }}</div>{% endif %}
+            {% if sample.comment %}<div style="margin-top:8px;">{{ sample.comment }}</div>{% endif %}
+            {% if sample.keywords %}
+            <div class="toolbar" style="margin-top:10px;">
+              {% for keyword in sample.keywords %}
+              <span class="badge">{{ keyword }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="subtle" style="margin-top:10px;">暂无反馈样本。</div>
+        {% endif %}
+      </details>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="card" style="margin-top:18px;">
   <h2>结果 JSON</h2>
   <pre>{{ result_json }}</pre>

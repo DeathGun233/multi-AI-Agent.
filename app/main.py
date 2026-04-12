@@ -164,6 +164,72 @@ def _build_timeline(run: WorkflowRun) -> list[dict]:
     return points
 
 
+def _build_runtime_memory_sections(run: WorkflowRun) -> list[dict[str, object]]:
+    if not isinstance(run.result, dict):
+        return []
+
+    sections: list[dict[str, object]] = []
+    for key, agent_label in (
+        ("analyst_context", "AnalystAgent"),
+        ("content_context", "ContentAgent"),
+        ("reviewer_context", "ReviewerAgent"),
+    ):
+        context = run.result.get(key)
+        if not isinstance(context, dict):
+            continue
+        memory = context.get("memory", {})
+        if not isinstance(memory, dict):
+            memory = {}
+
+        recent_runs = []
+        for item in memory.get("recent_runs", [])[:3]:
+            if not isinstance(item, dict):
+                continue
+            recent_runs.append(
+                {
+                    "title": item.get("objective", "") or item.get("run_id", ""),
+                    "summary": item.get("summary", ""),
+                    "meta": " / ".join(
+                        str(value)
+                        for value in (item.get("status"), item.get("updated_at"))
+                        if str(value).strip()
+                    ),
+                    "tags": [str(value) for value in item.get("review_reasons", []) if str(value).strip()][:3],
+                }
+            )
+
+        feedback_samples = []
+        for item in memory.get("feedback_samples", [])[:3]:
+            if not isinstance(item, dict):
+                continue
+            feedback_samples.append(
+                {
+                    "reviewer_name": item.get("reviewer_name", ""),
+                    "comment": item.get("comment", ""),
+                    "meta": " / ".join(
+                        str(value)
+                        for value in (item.get("expected_status"), item.get("created_at"))
+                        if str(value).strip()
+                    ),
+                    "keywords": [str(value) for value in item.get("keywords", []) if str(value).strip()][:5],
+                }
+            )
+
+        sections.append(
+            {
+                "agent": agent_label,
+                "memory_hits": int(context.get("memory_hits", 0) or 0),
+                "dominant_keywords": [str(value) for value in memory.get("dominant_keywords", []) if str(value).strip()][:6],
+                "common_review_reasons": [
+                    str(value) for value in memory.get("common_review_reasons", []) if str(value).strip()
+                ][:4],
+                "recent_runs": recent_runs,
+                "feedback_samples": feedback_samples,
+            }
+        )
+    return sections
+
+
 def _build_run_rows(runs: list[WorkflowRun]) -> list[dict]:
     titles = _workflow_titles()
     rows = []
@@ -484,6 +550,7 @@ def run_detail_page(run_id: str, request: Request):
             run=run,
             timeline=_build_timeline(run),
             llm_summary=_build_llm_summary(run),
+            runtime_memory_sections=_build_runtime_memory_sections(run),
             result_json=_pretty_json(run.result),
             graph=engine.graph_shape(),
         ),
