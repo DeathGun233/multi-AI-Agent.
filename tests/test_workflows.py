@@ -2,9 +2,13 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.config import Settings
+from app.cleanup import classify_run_pollution_reason, find_test_pollution_candidates
 from app.db import UserAccountRecord
-from app.main import app, database
-from app.services import ReviewerAgent
+from app.main import _build_llm_summary, app, database
+from app.models import LLMCall, WorkflowLog, WorkflowRun, WorkflowType
+from app.reporting import build_workflow_markdown
+from app.services import CostAnalyticsService, ReviewerAgent
 
 
 client = TestClient(app)
@@ -69,6 +73,10 @@ def test_seeded_users_are_persisted_with_password_hash() -> None:
         assert record is not None
         assert record.password_hash.startswith("pbkdf2_sha256$")
         assert record.password_hash != "admin123"
+
+
+def test_pytest_uses_isolated_database_file() -> None:
+    assert "flowpilot_test.db" in str(database.engine.url)
 
 
 def test_root_redirects_to_login() -> None:
@@ -143,6 +151,16 @@ def test_review_page_requires_reviewer_role() -> None:
     assert allowed.status_code == 200
 
 
+def test_review_page_exposes_bulk_delete_controls_for_waiting_human_runs() -> None:
+    create_support_run()
+    login_as("reviewer", "reviewer123")
+    response = client.get("/reviews")
+    assert response.status_code == 200
+    assert 'action="/runs/bulk-delete"' in response.text
+    assert 'name="run_ids"' in response.text
+    assert "bulk-delete-button" in response.text
+
+
 def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
     body = create_sales_run()
     assert body["result"]["raw_result"]["lead_count"] > 0
@@ -151,12 +169,16 @@ def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
     assert body["result"]["execution_profile"]["routing_policy"]["policy_id"] == "balanced-router-v1"
     assert "planning_context" in body["result"]
     assert "memory" in body["result"]["planning_context"]
+    assert "operator_context" in body["result"]
+    assert len(body["result"]["operator_context"]["used_tools"]) >= 1
     planner_logs = [log for log in body["logs"] if log["agent"] == "PlannerAgent"]
     assert len(planner_logs) == 1
     assert planner_logs[0]["tool_call"]["name"] == "planning_context_tool"
+    operator_logs = [log for log in body["logs"] if log["agent"] == "OperatorAgent" and log.get("tool_call")]
+    assert len(operator_logs) >= 1
     llm_logs = [log for log in body["logs"] if log.get("llm_call")]
-    assert len(llm_logs) == 4
-    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "analyst", "content", "reviewer"}
+    assert len(llm_logs) >= 5
+    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "operator", "analyst", "content", "reviewer"}
 
 
 def test_waiting_human_reasons_do_not_include_auto_execute_copy() -> None:
@@ -359,3 +381,200 @@ def test_feedback_review_creates_feedback_sample() -> None:
     feedback_samples = client.get("/api/feedback-samples")
     assert feedback_samples.status_code == 200
     assert len(feedback_samples.json()) >= 1
+
+
+def test_runtime_memory_context_is_recorded_for_analyst_and_reviewer() -> None:
+    first = create_support_run()
+    login_as("reviewer", "reviewer123")
+    reviewed = client.post(
+        f"/api/workflows/{first['id']}/review",
+        json={"approve": True, "comment": "保留责任人、风险说明和升级判断。"},
+    )
+    assert reviewed.status_code == 200
+
+    second = create_support_run()
+
+    analyst_context = second["result"]["analyst_context"]
+    reviewer_context = second["result"]["reviewer_context"]
+
+    assert analyst_context["memory_hits"] >= 1
+    assert reviewer_context["memory_hits"] >= 1
+    assert len(analyst_context["memory"]["recent_runs"]) >= 1
+    assert len(reviewer_context["memory"]["feedback_samples"]) >= 1
+    assert any("历史记忆" in log["message"] for log in second["logs"] if log["agent"] == "AnalystAgent")
+    assert any("历史记忆" in log["message"] for log in second["logs"] if log["agent"] == "ReviewerAgent")
+
+
+def test_llm_summary_counts_only_real_model_calls_and_separates_fallbacks() -> None:
+    run = WorkflowRun(workflow_type=WorkflowType.SALES_FOLLOWUP)
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="fallback",
+            llm_call=LLMCall(
+                model_name="qwen3-max",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=True,
+                error="llm_disabled",
+            ),
+        ),
+        WorkflowLog(
+            agent="AnalystAgent",
+            message="real",
+            llm_call=LLMCall(
+                model_name="qwen3-max",
+                route_target="analyst",
+                system_prompt="s",
+                user_prompt="u",
+                prompt_tokens=120,
+                completion_tokens=30,
+                total_tokens=150,
+                latency_ms=900,
+                estimated_cost_usd=0.012,
+            ),
+        ),
+    ]
+
+    summary = _build_llm_summary(run)
+
+    assert summary["total_requests"] == 1
+    assert summary["fallback_requests"] == 1
+    assert summary["total_tokens"] == 150
+    assert summary["total_cost_usd"] == 0.012
+
+
+def test_workflow_markdown_report_includes_fallback_requests() -> None:
+    run = WorkflowRun(workflow_type=WorkflowType.SALES_FOLLOWUP, objective="test objective")
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="fallback",
+            llm_call=LLMCall(
+                model_name="qwen3-max",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=True,
+                error="llm_disabled",
+            ),
+        )
+    ]
+    summary = _build_llm_summary(run)
+
+    markdown = build_workflow_markdown(run, summary, "{}")
+
+    assert "降级执行次数" in markdown
+    assert "1" in markdown
+
+
+def test_cost_summary_excludes_fallback_calls_and_tracks_them_separately() -> None:
+    run = WorkflowRun(workflow_type=WorkflowType.SALES_FOLLOWUP)
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="fallback",
+            llm_call=LLMCall(
+                model_name="qwen3-max",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=True,
+                error="llm_disabled",
+                estimated_cost_usd=0.99,
+                total_tokens=999,
+                latency_ms=999,
+            ),
+        ),
+        WorkflowLog(
+            agent="AnalystAgent",
+            message="real",
+            llm_call=LLMCall(
+                model_name="qwen3-max",
+                route_target="analyst",
+                system_prompt="s",
+                user_prompt="u",
+                prompt_tokens=120,
+                completion_tokens=30,
+                total_tokens=150,
+                latency_ms=900,
+                estimated_cost_usd=0.012,
+            ),
+        ),
+    ]
+
+    class Repo:
+        def list_all(self):
+            return [run]
+
+    summary = CostAnalyticsService(Repo(), Settings()).build_summary()
+
+    assert summary["total_cost_usd"] == 0.012
+    assert summary["total_tokens"] == 150
+    assert summary["llm_call_count"] == 1
+    assert summary["fallback_requests"] == 1
+
+
+def test_cleanup_detector_matches_known_pytest_sales_fixture() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        input_payload={
+            "period": "2026-W13",
+            "region": "华东",
+            "sales_reps": ["王晨", "李雪"],
+            "focus_metric": "conversion_rate",
+        },
+    )
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="fallback",
+            llm_call=LLMCall(
+                model_name="qwen-plus",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=True,
+                error="llm_disabled",
+            ),
+        )
+    ]
+
+    assert classify_run_pollution_reason(run) == "pytest_sales_fixture"
+    assert [item.id for item in find_test_pollution_candidates([run])] == [run.id]
+
+
+def test_cleanup_detector_does_not_match_real_llm_run() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        input_payload={
+            "period": "2026-W13",
+            "region": "华东",
+            "sales_reps": ["王晨", "李雪"],
+            "focus_metric": "conversion_rate",
+        },
+    )
+    run.logs = [
+        WorkflowLog(
+            agent="PlannerAgent",
+            message="real",
+            llm_call=LLMCall(
+                model_name="qwen-plus",
+                route_target="planner",
+                system_prompt="s",
+                user_prompt="u",
+                used_fallback=False,
+                total_tokens=123,
+            ),
+        )
+    ]
+
+    assert classify_run_pollution_reason(run) is None
+    assert find_test_pollution_candidates([run]) == []
+
+
+def test_settings_can_disable_runtime_memory(monkeypatch) -> None:
+    monkeypatch.setenv("FLOWPILOT_ENABLE_RUNTIME_MEMORY", "false")
+    settings = Settings.from_env()
+    assert settings.enable_runtime_memory is False
