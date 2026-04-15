@@ -28,8 +28,8 @@ def create_sales_run() -> dict:
             "workflow_type": "sales_followup",
             "input_payload": {
                 "period": "2026-W13",
-                "region": "??",
-                "sales_reps": ["??", "??"],
+                "region": "华东",
+                "sales_reps": ["王晨", "李雪"],
                 "focus_metric": "conversion_rate",
             },
             "model_name_override": "qwen-plus",
@@ -50,8 +50,8 @@ def create_support_run() -> dict:
             "input_payload": {
                 "tickets": [
                     {
-                        "customer": "????",
-                        "message": "???????????????????????",
+                        "customer": "示例客户",
+                        "message": "生产接口持续报错，今天必须恢复，否则影响上线。",
                     }
                 ]
             },
@@ -95,8 +95,8 @@ def test_dashboard_renders_all_real_data_source_options() -> None:
     login_as("operator", "operator123")
     response = client.get("/dashboard")
     assert response.status_code == 200
-    assert "?????" in response.text
-    assert "???????" in response.text
+    assert "新建工作流" in response.text
+    assert "真实数据源配置" in response.text
     assert "GitHub Issues" in response.text
     assert "NYC 311" in response.text
     assert "Stack Overflow" in response.text
@@ -188,19 +188,19 @@ def test_waiting_human_reasons_do_not_include_auto_execute_copy() -> None:
             "status": "completed",
             "needs_human_review": False,
             "score": 0.92,
-            "reasons": ["???????????????"],
+            "reasons": ["结果结构完整，可直接流转执行。"],
         },
         {
             "status": "waiting_human",
             "needs_human_review": True,
             "score": 0.65,
-            "reasons": ["?????????????????"],
+            "reasons": ["跟进策略需要管理者确认后才能执行。"],
         },
     )
     assert merged["status"] == "waiting_human"
     assert merged["needs_human_review"] is True
-    assert all("????" not in reason for reason in merged["reasons"])
-    assert any("??" in reason or "??" in reason for reason in merged["reasons"])
+    assert all("直接流转" not in reason for reason in merged["reasons"])
+    assert any("确认" in reason or "审核" in reason for reason in merged["reasons"])
 
 
 def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
@@ -214,20 +214,20 @@ def test_support_workflow_flags_human_review_and_can_be_approved() -> None:
 
     approved = client.post(
         f"/api/workflows/{body['id']}/review",
-        json={"approve": True, "comment": "??????????????????"},
+        json={"approve": True, "comment": "值班负责人已确认回复策略与处理方案。"},
     ).json()
     assert approved["status"] == "completed"
-    assert any("???" in log["message"] for log in approved["logs"])
+    assert any("已通过" in log["message"] for log in approved["logs"])
 
 
 def test_run_detail_page_contains_all_export_formats() -> None:
     created = create_sales_run()
     detail = client.get(f"/runs/{created['id']}")
     assert detail.status_code == 200
-    assert "?????" in detail.text
-    assert "?? Markdown" in detail.text
-    assert "?? HTML" in detail.text
-    assert "?? PDF" in detail.text
+    assert "执行时间线" in detail.text
+    assert "导出 Markdown" in detail.text
+    assert "导出 HTML" in detail.text
+    assert "导出 PDF" in detail.text
 
 
 def test_workflow_export_endpoint_supports_markdown_html_and_pdf() -> None:
@@ -247,8 +247,8 @@ def test_runs_page_supports_status_and_workflow_filters() -> None:
     create_support_run()
     response = client.get("/runs?status_filter=waiting_human&workflow_filter=support_triage")
     assert response.status_code == 200
-    assert "?????" in response.text
-    assert "????????" in response.text
+    assert "只看待审核" in response.text
+    assert "客服工单智能分流" in response.text
 
 
 def test_prompt_profile_can_be_created_and_updated() -> None:
@@ -259,12 +259,12 @@ def test_prompt_profile_can_be_created_and_updated() -> None:
         json={
             "profile_id": profile_id,
             "base_profile_id": "ops-deep-v1",
-            "name": "?????",
+            "name": "运营实验版",
             "version": "v1",
-            "description": "??????????????????",
-            "analyst_instruction": "????????",
-            "content_instruction": "????????????",
-            "reviewer_instruction": "??????????????",
+            "description": "用于评估更强运营语言风格的实验方案。",
+            "analyst_instruction": "更强调根因分析。",
+            "content_instruction": "更强调责任人与截止时间。",
+            "reviewer_instruction": "风险不清晰时更偏向人工审核。",
         },
     )
     assert created.status_code == 200
@@ -275,12 +275,12 @@ def test_prompt_profile_can_be_created_and_updated() -> None:
         json={
             "profile_id": profile_id,
             "base_profile_id": "ops-deep-v1",
-            "name": "?????",
+            "name": "运营实验版",
             "version": "v2",
-            "description": "??????????????????",
-            "analyst_instruction": "????????????",
-            "content_instruction": "????????????",
-            "reviewer_instruction": "??????????????",
+            "description": "用于评估更强运营语言风格的实验方案。",
+            "analyst_instruction": "更强调根因分析和优先级。",
+            "content_instruction": "更强调责任人与截止时间。",
+            "reviewer_instruction": "风险不清晰时更偏向人工审核。",
         },
     )
     assert updated.status_code == 200
@@ -304,7 +304,7 @@ def test_evaluation_run_page_supports_trend_and_drilldown_and_exports() -> None:
     login_as("operator", "operator123")
     page = client.get("/evaluations")
     assert page.status_code == 200
-    assert "????" in page.text
+    assert "自动评测" in page.text
 
     response = client.post(
         "/evaluations/run",
@@ -320,8 +320,8 @@ def test_evaluation_run_page_supports_trend_and_drilldown_and_exports() -> None:
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert "????" in response.text
-    assert "???????" in response.text
+    assert "评测趋势" in response.text
+    assert "查看单案例明细" in response.text
 
     evaluations = client.get("/api/evaluations").json()
     assert len(evaluations) >= 1
@@ -339,26 +339,26 @@ def test_batch_experiment_run_and_listing_work() -> None:
     response = client.post(
         "/api/batches",
         json={
-            "name": "Prompt AB ??",
+            "name": "Prompt AB 回归",
             "workflow_type": "sales_followup",
             "input_payload": {
                 "period": "2026-W13",
-                "region": "??",
-                "sales_reps": ["??", "??"],
+                "region": "华东",
+                "sales_reps": ["王晨", "李雪"],
                 "focus_metric": "conversion_rate",
             },
             "repeats": 1,
             "variants": [
                 {
                     "variant_id": "control",
-                    "label": "???",
+                    "label": "对照组",
                     "model_name": "qwen-plus",
                     "prompt_profile_id": "balanced-v1",
                     "routing_policy_id": "balanced-router-v1",
                 },
                 {
                     "variant_id": "challenger",
-                    "label": "???",
+                    "label": "挑战组",
                     "model_name": "qwen3-max",
                     "prompt_profile_id": "ops-deep-v1",
                     "routing_policy_id": "strict-review-v1",
@@ -377,7 +377,7 @@ def test_feedback_review_creates_feedback_sample() -> None:
     login_as("reviewer", "reviewer123")
     client.post(
         f"/api/workflows/{body['id']}/review",
-        json={"approve": True, "comment": "?????????????"},
+        json={"approve": True, "comment": "需要保留负责人和风险说明。"},
     )
     feedback_samples = client.get("/api/feedback-samples")
     assert feedback_samples.status_code == 200
@@ -402,8 +402,8 @@ def test_runtime_memory_context_is_recorded_for_analyst_and_reviewer() -> None:
     assert reviewer_context["memory_hits"] >= 1
     assert len(analyst_context["memory"]["recent_runs"]) >= 1
     assert len(reviewer_context["memory"]["feedback_samples"]) >= 1
-    assert any("????" in log["message"] for log in second["logs"] if log["agent"] == "AnalystAgent")
-    assert any("????" in log["message"] for log in second["logs"] if log["agent"] == "ReviewerAgent")
+    assert any("历史记忆" in log["message"] for log in second["logs"] if log["agent"] == "AnalystAgent")
+    assert any("历史记忆" in log["message"] for log in second["logs"] if log["agent"] == "ReviewerAgent")
 
 
 def test_runtime_memory_context_is_recorded_for_content_agent() -> None:
@@ -422,7 +422,7 @@ def test_runtime_memory_context_is_recorded_for_content_agent() -> None:
     assert content_context["memory_hits"] >= 1
     assert len(content_context["memory"]["recent_runs"]) >= 1
     assert len(content_context["memory"]["feedback_samples"]) >= 1
-    assert any("????" in log["message"] for log in second["logs"] if log["agent"] == "ContentAgent")
+    assert any("历史记忆" in log["message"] for log in second["logs"] if log["agent"] == "ContentAgent")
 
 
 def test_run_detail_page_shows_runtime_memory_summary() -> None:
@@ -439,7 +439,7 @@ def test_run_detail_page_shows_runtime_memory_summary() -> None:
     detail = client.get(f"/runs/{second['id']}")
 
     assert detail.status_code == 200
-    assert "?????" in detail.text
+    assert "运行时记忆" in detail.text
     assert "AnalystAgent" in detail.text
     assert "ContentAgent" in detail.text
     assert "ReviewerAgent" in detail.text

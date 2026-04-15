@@ -503,18 +503,18 @@ class PlannerAgent:
         fallback = self._fallback_plan(request)
         planning_context, tool_call = self.planning_context_tool.run(request)
         system_prompt = (
-            "???? AI ????? PlannerAgent?"
-            "???????????????????????????????"
-            "???? JSON??? workflow_type?objective?steps?expected_outputs?"
-            "steps ??????????expected_outputs ????? agent ??????"
+            "你是企业 AI 工作流中的 PlannerAgent。"
+            "请结合任务输入、工作流模板和历史经验，输出一个结构化执行计划。"
+            "必须返回 JSON，键为 workflow_type、objective、steps、expected_outputs。"
+            "steps 需要可执行且有顺序，expected_outputs 需要与后续 agent 的产出一致。"
         )
         user_prompt = (
-            f"?? Prompt ???{prompt_profile.name} {prompt_profile.version}\n"
-            f"?????{prompt_profile.description}\n"
-            f"??????{request.workflow_type.value}\n"
-            f"???? JSON?\n{json.dumps(request.input_payload, ensure_ascii=False)}\n"
-            f"????????? JSON?\n{json.dumps(planning_context, ensure_ascii=False)}\n"
-            "????????????????????????????? objective ? steps ????"
+            f"当前 Prompt 方案：{prompt_profile.name} {prompt_profile.version}\n"
+            f"方案描述：{prompt_profile.description}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"任务输入 JSON：\n{json.dumps(request.input_payload, ensure_ascii=False)}\n"
+            f"规划上下文工具结果 JSON：\n{json.dumps(planning_context, ensure_ascii=False)}\n"
+            "请生成适合当前任务的规划，若历史反馈里出现风险或缺口，请在 objective 或 steps 中体现。"
         )
         response = self.llm_service.generate_json(
             route_target="planner",
@@ -585,12 +585,12 @@ class PlannerAgent:
     @staticmethod
     def _objective(workflow_type: WorkflowType, payload: dict[str, Any]) -> str:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            return f"?? {payload.get('period', '????')} ? {payload.get('region', '????')} ?????"
+            return f"分析 {payload.get('period', '当前周期')} 在 {payload.get('region', '全部区域')} 的销售表现"
         if workflow_type == WorkflowType.MARKETING_CAMPAIGN:
-            return f"? {payload.get('product_name', '????')} ??????"
+            return f"为 {payload.get('product_name', '目标产品')} 生成投放内容"
         if workflow_type == WorkflowType.SUPPORT_TRIAGE:
-            return f"?? {len(payload.get('tickets', []))} ?????"
-        return f"? {payload.get('meeting_title', '??')} ????????"
+            return f"处理 {len(payload.get('tickets', []))} 条客服工单"
+        return f"将 {payload.get('meeting_title', '会议')} 纪要转成执行动作"
 
 
 class ToolCenter:
@@ -641,16 +641,16 @@ class ToolCenter:
         channels = payload.get("channels", ["xiaohongshu"])
         key_benefits = payload.get("key_benefits", [])
         return {
-            "product_name": payload.get("product_name", "????"),
-            "audience": payload.get("audience", "????"),
+            "product_name": payload.get("product_name", "目标产品"),
+            "audience": payload.get("audience", "目标人群"),
             "channels": channels,
             "key_benefits": key_benefits,
-            "tone": payload.get("tone", "????"),
+            "tone": payload.get("tone", "清晰直接"),
             "compliance_risks": [
-                "???????????",
-                "???????????",
+                "避免使用绝对化效果承诺",
+                "发布前复核产品能力表述",
             ],
-            "channel_notes": {channel: f"? {channel} ??????????????" for channel in channels},
+            "channel_notes": {channel: f"为 {channel} 准备一个主卖点和一个行动号召" for channel in channels},
         }
 
     def _support_triage(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
@@ -687,7 +687,7 @@ class ToolCenter:
             enriched.append(
                 {
                     "ticket_id": str(ticket.get("source_id") or f"T-{index:03d}"),
-                    "customer": ticket.get("customer", f"??{index}"),
+                    "customer": ticket.get("customer", f"客户{index}"),
                     "category": category,
                     "priority": severity,
                     "message": ticket.get("message", ""),
@@ -710,17 +710,17 @@ class ToolCenter:
         sentences = [item.strip(" .") for item in re.split(r"\d+\.\s*", notes) if item.strip()]
         actions = []
         for index, sentence in enumerate(sentences, start=1):
-            owner = sentence.split(" ", 1)[0] if sentence else f"???{index}"
+            owner = sentence.split(" ", 1)[0] if sentence else f"负责人{index}"
             actions.append(
                 {
                     "id": f"A-{index:03d}",
                     "owner": owner,
                     "task": sentence,
-                    "deadline": "?????",
+                    "deadline": "下个检查点",
                 }
             )
         return {
-            "meeting_title": payload.get("meeting_title", "??"),
+            "meeting_title": payload.get("meeting_title", "会议"),
             "action_items": actions,
             "owner_count": len({item["owner"] for item in actions}),
             "summary_points": sentences[:3],
@@ -742,13 +742,13 @@ class AnalystAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._fallback_analysis(request.workflow_type, raw_result)
         system_prompt = (
-            "???? AI ????? AnalystAgent?????? JSON??? summary?insights?action_plan????????"
+            "你是企业 AI 工作流中的 AnalystAgent。请严格返回 JSON，键为 summary、insights、action_plan，全部使用中文。"
         )
         user_prompt = (
-            f"Prompt ?????{prompt_profile.analyst_instruction}\n"
-            f"??????{request.workflow_type.value}\n"
-            f"???? JSON?\n{json.dumps(raw_result, ensure_ascii=False)}\n"
-            f"???? JSON?\n{json.dumps(memory_context, ensure_ascii=False)}"
+            f"Prompt 方案要求：{prompt_profile.analyst_instruction}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"原始结果 JSON：\n{json.dumps(raw_result, ensure_ascii=False)}\n"
+            f"历史记忆 JSON：\n{json.dumps(memory_context, ensure_ascii=False)}"
         )
         response = self.llm_service.generate_json(
             route_target="analyst",
@@ -767,53 +767,53 @@ class AnalystAgent:
     @staticmethod
     def _fallback_analysis(workflow_type: WorkflowType, raw_result: dict[str, Any]) -> dict[str, Any]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            risk_names = "?".join(item["name"] for item in raw_result.get("risk_customers", [])) or "??"
+            risk_names = "、".join(item["name"] for item in raw_result.get("risk_customers", [])) or "暂无"
             return {
                 "summary": (
-                    f"?????? {raw_result.get('conversion_rate', 0):.0%}??????? {raw_result.get('avg_cycle_days', 0)} ??"
+                    f"当前转化率为 {raw_result.get('conversion_rate', 0):.0%}，平均销售周期 {raw_result.get('avg_cycle_days', 0)} 天。"
                 ),
                 "insights": [
-                    "????????????????????",
-                    f"?????????{risk_names}?",
+                    "整体转化表现偏弱，风险客户需要重点跟进。",
+                    f"当前风险客户包括：{risk_names}。",
                 ],
                 "action_plan": [
-                    "???????????????",
-                    "?????????????",
+                    "为风险客户制定一对一跟进计划。",
+                    "与区域负责人复盘停滞商机。",
                 ],
             }
         if workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             return {
-                "summary": f"?? {raw_result.get('product_name', '??')} ?????????",
+                "summary": f"已为 {raw_result.get('product_name', '产品')} 准备投放内容方案。",
                 "insights": [
-                    "????????????????????",
-                    "????????????",
+                    "不同渠道需要统一卖点但单独设计行动号召。",
+                    "发布前需要复核合规表述。",
                 ],
                 "action_plan": [
-                    "???????????",
-                    "????????????",
+                    "为每个渠道明确主卖点。",
+                    "上线前增加一次合规检查。",
                 ],
             }
         if workflow_type == WorkflowType.SUPPORT_TRIAGE:
             return {
-                "summary": f"??? {raw_result.get('high_priority_count', 0)} ??????????????",
+                "summary": f"当前有 {raw_result.get('high_priority_count', 0)} 条高优先级工单需要优先处理。",
                 "insights": [
-                    "?????????????????",
-                    "??????????????????",
+                    "疑似故障类工单应优先进入人工接管。",
+                    "低风险账单类问题可自动生成回复草稿。",
                 ],
                 "action_plan": [
-                    "??????????????",
-                    "???????????????",
+                    "将故障工单升级给值班负责人。",
+                    "为低风险工单发送标准回复草稿。",
                 ],
             }
         return {
-            "summary": f"??? {len(raw_result.get('action_items', []))} ???????",
+            "summary": f"已抽取 {len(raw_result.get('action_items', []))} 条会议行动项。",
             "insights": [
-                "???????????????????",
-                "??????????????",
+                "每个行动项都需要明确责任人和检查节点。",
+                "简洁总结更利于团队快速执行。",
             ],
             "action_plan": [
-                "?????????????",
-                "????????????????",
+                "将行动项同步给对应负责人。",
+                "自动完成前复核截止时间是否清晰。",
             ],
         }
 
@@ -834,15 +834,15 @@ class ContentAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._fallback_deliverables(request.workflow_type, raw_result, analysis)
         system_prompt = (
-            "???? AI ????? ContentAgent?????? JSON??? deliverables ? manager_note????????"
+            "你是企业 AI 工作流中的 ContentAgent。请严格返回 JSON，键为 deliverables 和 manager_note，全部使用中文。"
         )
         user_prompt = (
-            f"Prompt ?????{prompt_profile.content_instruction}\n"
-            f"??????{request.workflow_type.value}\n"
-            f"???? JSON?\n{json.dumps(raw_result, ensure_ascii=False)}\n"
-            f"???? JSON?\n{json.dumps(analysis, ensure_ascii=False)}"
+            f"Prompt 方案要求：{prompt_profile.content_instruction}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"原始结果 JSON：\n{json.dumps(raw_result, ensure_ascii=False)}\n"
+            f"分析结果 JSON：\n{json.dumps(analysis, ensure_ascii=False)}"
         )
-        user_prompt += f"\n?????? JSON??n{json.dumps(memory_context, ensure_ascii=False)}"
+        user_prompt += f"\n鍘嗗彶璁板繂 JSON锛歕n{json.dumps(memory_context, ensure_ascii=False)}"
         response = self.llm_service.generate_json(
             route_target="content",
             system_prompt=system_prompt,
@@ -864,43 +864,43 @@ class ContentAgent:
     ) -> dict[str, Any]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
             deliverables = {
-                "????": analysis.get("summary", ""),
+                "日报摘要": analysis.get("summary", ""),
                 "follow_up_plan": [
                     {
-                        "??": item["name"],
-                        "???": item["owner"],
-                        "?????": item["next_action"],
+                        "客户": item["name"],
+                        "负责人": item["owner"],
+                        "下一步动作": item["next_action"],
                     }
                     for item in raw_result.get("risk_customers", [])
                 ],
             }
-            manager_note = "????????????????????????????"
+            manager_note = "需要管理者确认风险客户跟进节奏和较长销售周期的处理策略。"
         elif workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             deliverables = {
-                "??????": {
-                    channel: f"{raw_result.get('product_name', '??')} ?? {raw_result.get('audience', '????')} ? {channel} ????"
+                "渠道内容资产": {
+                    channel: f"{raw_result.get('product_name', '产品')} 面向 {raw_result.get('audience', '目标用户')} 的 {channel} 投放文案"
                     for channel in raw_result.get("channels", [])
                 },
-                "??????": raw_result.get("compliance_risks", []),
+                "发布检查清单": raw_result.get("compliance_risks", []),
             }
-            manager_note = "???????????????"
+            manager_note = "排期前建议先完成一次合规复核。"
         elif workflow_type == WorkflowType.SUPPORT_TRIAGE:
             deliverables = {
-                "????": [
+                "回复草稿": [
                     {
-                        "????": item["ticket_id"],
-                        "??": f"???????{item['category']}??????????????????",
+                        "工单编号": item["ticket_id"],
+                        "草稿": f"我们已收到关于{item['category']}的问题，正在为您进一步处理，请稍候。",
                     }
                     for item in raw_result.get("tickets", [])
                 ]
             }
-            manager_note = "??????????????????"
+            manager_note = "高优先级故障工单应由人工负责人复核。"
         else:
             deliverables = {
-                "??????": analysis.get("summary", ""),
-                "???": raw_result.get("action_items", []),
+                "会后摘要邮件": analysis.get("summary", ""),
+                "行动项": raw_result.get("action_items", []),
             }
-            manager_note = "?????????????????????"
+            manager_note = "建议将行动摘要同步给负责人并确认截止时间。"
         return {"deliverables": deliverables, "manager_note": manager_note}
 
 
@@ -921,15 +921,15 @@ class ReviewerAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._rule_review(request.workflow_type, raw_result, analysis, deliverables)
         system_prompt = (
-            "???? AI ????? ReviewerAgent?????? JSON??? status?needs_human_review?score?reasons????????"
+            "你是企业 AI 工作流中的 ReviewerAgent。请严格返回 JSON，键为 status、needs_human_review、score、reasons，全部使用中文。"
         )
         user_prompt = (
-            f"Prompt ?????{prompt_profile.reviewer_instruction}\n"
-            f"??????{request.workflow_type.value}\n"
-            f"???? JSON?\n{json.dumps(raw_result, ensure_ascii=False)}\n"
-            f"???? JSON?\n{json.dumps(analysis, ensure_ascii=False)}\n"
-            f"???? JSON?\n{json.dumps(deliverables, ensure_ascii=False)}\n"
-            f"???? JSON?\n{json.dumps(memory_context, ensure_ascii=False)}"
+            f"Prompt 方案要求：{prompt_profile.reviewer_instruction}\n"
+            f"工作流类型：{request.workflow_type.value}\n"
+            f"原始结果 JSON：\n{json.dumps(raw_result, ensure_ascii=False)}\n"
+            f"分析结果 JSON：\n{json.dumps(analysis, ensure_ascii=False)}\n"
+            f"交付结果 JSON：\n{json.dumps(deliverables, ensure_ascii=False)}\n"
+            f"历史记忆 JSON：\n{json.dumps(memory_context, ensure_ascii=False)}"
         )
         response = self.llm_service.generate_json(
             route_target="reviewer",
@@ -955,31 +955,31 @@ class ReviewerAgent:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
             if raw_result.get("conversion_rate", 0) <= 0.15:
                 needs_human_review = True
-                reasons.append("????????????????????")
+                reasons.append("当前转化率偏低，跟进策略需要管理者确认。")
                 score = 0.65
             if raw_result.get("risk_customers"):
-                reasons.append("?????????????????")
+                reasons.append("风险客户需要明确负责人和跟进节奏。")
         elif workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             needs_human_review = True
-            reasons.append("????????????????????")
+            reasons.append("营销内容需要人工复核品牌口径和合规表达。")
             score = 0.7
         elif workflow_type == WorkflowType.SUPPORT_TRIAGE:
             if raw_result.get("requires_incident_handoff"):
                 needs_human_review = True
-                reasons.append("????????????????")
+                reasons.append("疑似故障类工单必须进入人工接管。")
                 score = 0.6
         elif workflow_type == WorkflowType.MEETING_MINUTES:
             if not raw_result.get("action_items"):
                 needs_human_review = True
-                reasons.append("????????????????????")
+                reasons.append("当前未抽取到清晰的行动项，需要人工确认。")
                 score = 0.55
 
         if not reasons:
-            reasons.append("???????????????")
+            reasons.append("结果结构完整，可直接流转执行。")
         if not analysis or not deliverables:
             needs_human_review = True
             score = min(score, 0.5)
-            reasons.append("????????????????????")
+            reasons.append("核心分析或交付结果不完整，需要人工补充。")
         status = "waiting_human" if needs_human_review else "completed"
         return {
             "status": status,
@@ -1011,18 +1011,18 @@ class ReviewerAgent:
                 reason for reason in reasons
                 if not any(
                     text in reason.lower()
-                    for text in ["proceed automatically", "auto-complete", "can proceed directly", "????", "????"]
+                    for text in ["proceed automatically", "auto-complete", "can proceed directly", "直接流转", "自动流转"]
                 )
             ]
             if not reasons:
-                reasons = ["?????????????????"]
+                reasons = ["该任务需要人工审核后才能继续执行。"]
         else:
             reasons = [
                 reason for reason in reasons
                 if "human review" not in reason.lower() and "handoff" not in reason.lower()
             ]
             if not reasons:
-                reasons = ["???????????????????"]
+                reasons = ["结果完整且风险可控，可以直接自动流转。"]
 
         score = float(model_review.get("score", rule_review.get("score", 0.8)))
         if status == "waiting_human":
@@ -1124,22 +1124,22 @@ class FeedbackService:
                 seen.append(cleaned)
         if seen:
             return seen[:8]
-        return ["????", "????", "????"]
+        return ["人工审核", "质量复核", "执行清晰"]
 
     @staticmethod
     def _extract_quality_tags(run: WorkflowRun, comment: str) -> list[str]:
         tags = [run.workflow_type.value]
         text = f"{comment} {' '.join(run.review.reasons if run.review else [])}"
-        if "??" in text or "incident" in text.lower():
-            tags.append("????")
-        if "???" in text or "owner" in text.lower():
-            tags.append("????")
-        if "??" in text:
-            tags.append("????")
+        if "风险" in text or "incident" in text.lower():
+            tags.append("风险控制")
+        if "负责人" in text or "owner" in text.lower():
+            tags.append("责任清晰")
+        if "合规" in text:
+            tags.append("合规复核")
         if run.status == RunStatus.COMPLETED:
-            tags.append("???")
+            tags.append("可执行")
         else:
-            tags.append("?????")
+            tags.append("需人工判断")
         return tags
 
     @staticmethod
@@ -1149,7 +1149,7 @@ class FeedbackService:
             "completeness_weight": 35,
             "risk_control_weight": 30,
             "workflow_type": run.workflow_type.value,
-            "guide": "???????????????????????????????????",
+            "guide": "重点检查输出是否清晰、完整、可执行，并根据场景确认风险是否被正确识别。",
         }
 
 
@@ -1250,7 +1250,7 @@ class WorkflowEngine:
         )
         run.add_log(
             "HumanReviewer",
-            f"{reviewer_name}{'???' if submission.approve else '???'}???????{submission.comment or '?'}",
+            f"{reviewer_name}{'已通过' if submission.approve else '已驳回'}该任务。备注：{submission.comment or '无'}",
         )
         if run.review:
             run.review.status = run.status
@@ -1330,7 +1330,7 @@ class WorkflowEngine:
         state["planning_context"] = planning_context
         run.add_log(
             "PlannerAgent",
-            f"??????????? {len(plan.steps)} ????????????????",
+            f"已生成动态执行计划，共 {len(plan.steps)} 步，并注入规划上下文与历史记忆。",
             tool_call=tool_call,
             llm_call=llm_call,
         )
@@ -1342,7 +1342,7 @@ class WorkflowEngine:
         request = state["request"]
         run.touch(status=RunStatus.EXECUTING, current_step="operator")
         raw_result, tool_call = self.tool_center.run(request.workflow_type, request.input_payload)
-        run.add_log("OperatorAgent", f"????????{tool_call.name}?", tool_call=tool_call)
+        run.add_log("OperatorAgent", f"已完成工具调用：{tool_call.name}。", tool_call=tool_call)
         state["raw_result"] = raw_result
         state["last_node"] = "operator"
         return state
@@ -1368,7 +1368,7 @@ class WorkflowEngine:
         )
         run.add_log(
             "AnalystAgent",
-            f"?????????????????? {analyst_context['memory_hits']} ??????",
+            f"已完成结果分析与行动建议整理，并注入 {analyst_context['memory_hits']} 条历史记忆。",
             llm_call=llm_call,
         )
         state["analysis"] = analysis
@@ -1396,10 +1396,10 @@ class WorkflowEngine:
             execution_profile=state["execution_profile"],
             prompt_profile=state["prompt_profile"],
         )
-        run.add_log("ContentAgent", "??????????????", llm_call=llm_call)
+        run.add_log("ContentAgent", "已补充可直接使用的业务输出。", llm_call=llm_call)
         run.add_log(
             "ContentAgent",
-            f"??? {content_context['memory_hits']} ???????????????",
+            f"已注入 {content_context['memory_hits']} 条历史记忆，用于生成业务输出。",
         )
         state["deliverables"] = deliverables
         state["content_context"] = content_context
@@ -1444,7 +1444,7 @@ class WorkflowEngine:
         }
         run.add_log(
             "ReviewerAgent",
-            f"??????????? {reviewer_context['memory_hits']} ??????",
+            f"已完成审核判断，并注入 {reviewer_context['memory_hits']} 条历史记忆。",
             llm_call=llm_call,
         )
         state["review"] = review_payload
@@ -1463,7 +1463,7 @@ class WorkflowEngine:
         state["route_decisions"] = route_decisions
         run.add_log(
             "RouterAgent",
-            f"? {decision['from_node']} ??? {decision['next_node']}?{decision['reason']}",
+            f"从 {decision['from_node']} 路由到 {decision['next_node']}：{decision['reason']}",
         )
         return state
 
@@ -1477,7 +1477,7 @@ class WorkflowEngine:
         if run.review:
             run.review.status = RunStatus.COMPLETED
             run.review.needs_human_review = False
-        run.add_log("System", "?????????")
+        run.add_log("System", "工作流已自动完成。")
         run.result["route_decisions"] = state.get("route_decisions", [])
         run.result["metrics"] = summarize_run_metrics(run)
         return state
@@ -1488,7 +1488,7 @@ class WorkflowEngine:
         if run.review:
             run.review.status = RunStatus.WAITING_HUMAN
             run.review.needs_human_review = True
-        run.add_log("System", "???????????")
+        run.add_log("System", "工作流已进入人工审核。")
         run.result["route_decisions"] = state.get("route_decisions", [])
         run.result["metrics"] = summarize_run_metrics(run)
         return state
@@ -1506,8 +1506,8 @@ class EvaluationService:
             base.append(
                 {
                     "dataset_id": "feedback-loop-v1",
-                    "name": "???????",
-                    "description": "??????????????????",
+                    "name": "人工反馈闭环集",
+                    "description": "由人工审核结果自动沉淀生成的样本集。",
                     "case_count": str(len(samples)),
                 }
             )
@@ -1627,7 +1627,7 @@ class EvaluationService:
         cases = [
             EvaluationCaseDefinition(
                 case_id=sample.id,
-                title=f"{sample.reviewer_name} ?????",
+                title=f"{sample.reviewer_name} 的反馈样本",
                 workflow_type=sample.workflow_type.value,
                 input_payload=sample.input_payload,
                 expected_status=sample.expected_status.value,
@@ -1637,8 +1637,8 @@ class EvaluationService:
         ]
         return EvaluationDatasetRuntime(
             dataset_id="feedback-loop-v1",
-            name="???????",
-            description="??????????????????",
+            name="人工反馈闭环集",
+            description="由人工审核反馈自动构建的评测样本集。",
             cases=cases,
         )
 
@@ -1739,7 +1739,7 @@ class BatchExperimentService:
             row["is_champion"] = index == 1
             row["champion_reason"] = ""
             if index == 1:
-                row["champion_reason"] = "??????????????????"
+                row["champion_reason"] = "综合得分最高，且成本与时延表现更优。"
                 champion = {
                     "variant_id": row["variant_id"],
                     "variant_label": row["variant_label"],
@@ -1790,20 +1790,20 @@ class CostAnalyticsService:
         projected_cost = round(total_cost / elapsed_days * days_in_month, 6) if total_cost else 0.0
 
         alert_level = "healthy"
-        alert_title = "??????"
-        alert_message = "??????????????????????"
+        alert_title = "预算运行正常"
+        alert_message = "当前模型消耗低于预警阈值，可以继续推进实验。"
         if spend_ratio >= 100:
             alert_level = "danger"
-            alert_title = "?????"
-            alert_message = "?????????????????????????"
+            alert_title = "预算已超支"
+            alert_message = "当前月度模型成本已超过预算，请立即收敛高成本实验。"
         elif spend_ratio >= 80:
             alert_level = "warning"
-            alert_title = "??????"
-            alert_message = "??????? 80% ??????????????????????"
+            alert_title = "预算接近上限"
+            alert_message = "当前成本已超过 80% 预算，建议优先使用批量实验对比后再扩大运行。"
         elif spend_ratio >= 50:
             alert_level = "notice"
-            alert_title = "???????"
-            alert_message = "??????? 50% ????????????????"
+            alert_title = "预算进入观察区"
+            alert_message = "当前成本已超过 50% 预算，建议开始关注模型成本趋势。"
 
         by_model: dict[str, dict[str, Any]] = {}
         for call in month_calls:
@@ -1851,8 +1851,8 @@ class CostAnalyticsService:
             "alert_title": alert_title,
             "alert_message": alert_message,
             "thresholds": [
-                {"label": "???", "ratio_percent": 50},
-                {"label": "???", "ratio_percent": 80},
-                {"label": "???", "ratio_percent": 100},
+                {"label": "观察线", "ratio_percent": 50},
+                {"label": "预警线", "ratio_percent": 80},
+                {"label": "超支线", "ratio_percent": 100},
             ],
         }
