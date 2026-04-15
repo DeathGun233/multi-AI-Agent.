@@ -1157,6 +1157,8 @@ class RouterAgent:
             return model_decision, "low_confidence"
         if model_decision.fallback_required:
             return model_decision, "fallback_required"
+        if not self._route_is_state_ready(model_decision.route, state):
+            return model_decision, "route_not_ready"
         if model_decision.route == "planner" and int(state.get("replan_count", 0) or 0) >= 1:
             return model_decision, "replan_limit_reached"
         return model_decision, None
@@ -1209,6 +1211,25 @@ class RouterAgent:
             "rule_route": rule_decision["next_node"],
             "allowed_routes": sorted(RouterAgent.ALLOWED_ROUTES),
         }
+
+    @staticmethod
+    def _route_is_state_ready(route: str, state: dict[str, Any]) -> bool:
+        if route in {"planner", "operator"}:
+            return True
+        if route == "analyst":
+            return bool(state.get("raw_result"))
+        if route == "content":
+            return bool(state.get("raw_result")) and bool(state.get("analysis"))
+        if route == "reviewer":
+            return (
+                bool(state.get("raw_result"))
+                and bool(state.get("analysis"))
+                and not RouterAgent._missing_deliverables(state.get("deliverables", {}))
+            )
+        if route in {"complete_run", "handoff_run"}:
+            run = state.get("run")
+            return bool(state.get("review")) and bool(getattr(run, "result", None))
+        return False
 
     @staticmethod
     def _missing_deliverables(deliverables: Any) -> bool:
