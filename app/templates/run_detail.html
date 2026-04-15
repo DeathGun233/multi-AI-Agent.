@@ -60,6 +60,47 @@
   </div>
 </section>
 
+<section class="card" style="margin-top:18px;">
+  <div class="toolbar" style="justify-content:space-between;">
+    <h2 style="margin:0;">路由轨迹</h2>
+    <div class="toolbar">
+      <span class="badge">{{ route_trace.total_steps }} 步路由</span>
+      <span class="badge">发生重规划：{{ "是" if route_trace.has_replan else "否" }}</span>
+      <span class="badge">fallback 次数：{{ route_trace.fallback_count }}</span>
+    </div>
+  </div>
+  {% if route_trace.rows %}
+  <div class="timeline-list" style="margin-top:16px;">
+    {% for row in route_trace.rows %}
+    <div class="timeline-row">
+      <div class="timeline-marker">
+        <div class="timeline-dot"></div>
+      </div>
+      <div class="timeline-card">
+        <div class="timeline-head">
+          <div class="timeline-agent">Step {{ row.step }}: {{ row.from_node }} -> {{ row.to_node }}</div>
+          <div class="toolbar">
+            <span class="badge">{{ row.source }}</span>
+            {% if row.used_fallback %}<span class="badge">FALLBACK</span>{% endif %}
+            {% if row.is_replan %}<span class="badge">REPLAN</span>{% endif %}
+          </div>
+        </div>
+        <div class="timeline-message">{{ row.reason }}</div>
+        <div class="subtle" style="margin-top:8px;">
+          模型建议：{{ row.model_route }}
+          / 置信度：{{ row.confidence }}
+          / replan_count：{{ row.replan_count }}
+          {% if row.fallback_reason %}/ fallback 原因：{{ row.fallback_reason }}{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="subtle" style="margin-top:12px;">暂无路由轨迹（该 run 可能来自旧版本）</div>
+  {% endif %}
+</section>
+
 <div class="grid two" style="margin-top:18px;">
   <section class="card">
     <h2>执行日志</h2>

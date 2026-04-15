@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.db import UserAccountRecord
-from app.main import app, database
+from app.main import app, database, repository
+from app.models import RunStatus, WorkflowRun, WorkflowType
 from app.services import ReviewerAgent, RouterAgent
 
 
@@ -360,6 +361,113 @@ def test_run_detail_page_contains_all_export_formats() -> None:
     assert "导出 Markdown" in detail.text
     assert "导出 HTML" in detail.text
     assert "导出 PDF" in detail.text
+
+
+def test_run_detail_page_shows_route_trace_section() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.COMPLETED,
+        current_step="completed",
+        objective="Route trace phase 1 fixture",
+        result={
+            "route_decisions": [
+                {
+                    "from_node": "planner",
+                    "next_node": "operator",
+                    "reason": "plan is ready; collect or transform source data",
+                    "replan_count": 0,
+                },
+                {
+                    "from_node": "content",
+                    "next_node": "planner",
+                    "reason": "deliverables are missing; request one replanning pass",
+                    "replan_count": 1,
+                },
+            ]
+        },
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "路由轨迹" in detail.text
+    assert "2 步路由" in detail.text
+    assert "planner -> operator" in detail.text
+    assert "content -> planner" in detail.text
+    assert "发生重规划：是" in detail.text
+    assert "REPLAN" in detail.text
+    assert "plan is ready; collect or transform source data" in detail.text
+
+
+def test_run_detail_page_handles_empty_route_trace_for_legacy_run() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.COMPLETED,
+        current_step="completed",
+        objective="Legacy run without route decisions",
+        result={"analysis": {"summary": "legacy result"}},
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "路由轨迹" in detail.text
+    assert "暂无路由轨迹（该 run 可能来自旧版本）" in detail.text
+    assert "结果 JSON" in detail.text
+
+
+def test_run_detail_page_shows_route_trace_audit_fields_when_present() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.COMPLETED,
+        current_step="completed",
+        objective="Route trace phase 2 fixture",
+        result={
+            "route_decisions": [
+                {
+                    "from_node": "content",
+                    "next_node": "reviewer",
+                    "final_route": "reviewer",
+                    "decision_source": "model",
+                    "model_route": "reviewer",
+                    "confidence": 0.91,
+                    "used_fallback": False,
+                    "fallback_reason": None,
+                    "reason": "content is complete enough for review",
+                    "replan_count": 0,
+                },
+                {
+                    "from_node": "planner",
+                    "next_node": "operator",
+                    "final_route": "operator",
+                    "decision_source": "rule",
+                    "model_route": "content",
+                    "confidence": 0.95,
+                    "used_fallback": True,
+                    "fallback_reason": "route_not_ready",
+                    "reason": "plan is ready; collect or transform source data",
+                    "replan_count": 0,
+                },
+            ]
+        },
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "MODEL" in detail.text
+    assert "RULE" in detail.text
+    assert "FALLBACK" in detail.text
+    assert "fallback 次数：1" in detail.text
+    assert "模型建议：content" in detail.text
+    assert "置信度：0.95" in detail.text
+    assert "route_not_ready" in detail.text
 
 
 def test_workflow_export_endpoint_supports_markdown_html_and_pdf() -> None:

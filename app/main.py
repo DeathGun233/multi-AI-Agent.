@@ -230,6 +230,64 @@ def _build_runtime_memory_sections(run: WorkflowRun) -> list[dict[str, object]]:
     return sections
 
 
+def _build_route_trace_sections(run: WorkflowRun) -> dict[str, object]:
+    decisions = run.result.get("route_decisions", []) if isinstance(run.result, dict) else []
+    if not isinstance(decisions, list):
+        decisions = []
+
+    rows: list[dict[str, object]] = []
+    fallback_count = 0
+    cumulative_replan_count = 0
+    for index, item in enumerate(decisions, start=1):
+        if not isinstance(item, dict):
+            continue
+
+        to_node = str(item.get("final_route") or item.get("next_node") or item.get("route") or "")
+        confidence = item.get("confidence")
+        if isinstance(confidence, (int, float)):
+            confidence_display = f"{float(confidence):.2f}".rstrip("0").rstrip(".")
+        else:
+            confidence_display = "--"
+
+        used_fallback = bool(item.get("used_fallback", False))
+        if used_fallback:
+            fallback_count += 1
+
+        try:
+            item_replan_count = int(item.get("replan_count", 0) or 0)
+        except (TypeError, ValueError):
+            item_replan_count = 0
+        cumulative_replan_count = max(cumulative_replan_count, item_replan_count)
+        is_replan = to_node == "planner" or item_replan_count > 0
+
+        model_route = item.get("model_route")
+        rows.append(
+            {
+                "step": index,
+                "from_node": str(item.get("from_node") or ""),
+                "to_node": to_node,
+                "source": str(item.get("decision_source") or "rule").upper(),
+                "model_route": str(model_route) if model_route else "--",
+                "confidence": confidence_display,
+                "used_fallback": used_fallback,
+                "fallback_reason": str(item.get("fallback_reason") or ""),
+                "reason": str(item.get("reason") or ""),
+                "is_replan": is_replan,
+                "replan_count": item_replan_count,
+            }
+        )
+
+    inferred_replan_count = sum(1 for row in rows if row["is_replan"])
+    replan_count = cumulative_replan_count or inferred_replan_count
+    return {
+        "rows": rows,
+        "total_steps": len(rows),
+        "fallback_count": fallback_count,
+        "replan_count": replan_count,
+        "has_replan": replan_count > 0,
+    }
+
+
 def _build_run_rows(runs: list[WorkflowRun]) -> list[dict]:
     titles = _workflow_titles()
     rows = []
@@ -551,6 +609,7 @@ def run_detail_page(run_id: str, request: Request):
             timeline=_build_timeline(run),
             llm_summary=_build_llm_summary(run),
             runtime_memory_sections=_build_runtime_memory_sections(run),
+            route_trace=_build_route_trace_sections(run),
             result_json=_pretty_json(run.result),
             graph=engine.graph_shape(),
         ),
