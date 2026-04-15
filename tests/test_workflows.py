@@ -1,4 +1,5 @@
 from uuid import uuid4
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -9,6 +10,20 @@ from app.services import ReviewerAgent, RouterAgent
 
 
 client = TestClient(app)
+
+
+class FakeRouterLLM:
+    def __init__(self, payload: dict | None = None, *, fail: bool = False) -> None:
+        self.payload = payload or {}
+        self.fail = fail
+
+    def generate_json(self, **_: object) -> SimpleNamespace:
+        if self.fail:
+            raise RuntimeError("router unavailable")
+        return SimpleNamespace(
+            payload=self.payload,
+            call=SimpleNamespace(used_fallback=False, error=None, validation_error=None),
+        )
 
 
 def login_as(username: str, password: str) -> None:
@@ -170,6 +185,94 @@ def test_router_requests_one_replan_when_content_is_missing() -> None:
 
     assert decision["next_node"] == "planner"
     assert decision["replan_count"] == 1
+    assert decision["decision_source"] == "rule"
+    assert decision["used_fallback"] is True
+    assert decision["fallback_reason"] == "llm_unavailable"
+
+
+def test_router_uses_confident_model_route_when_allowed() -> None:
+    router = RouterAgent(
+        llm_service=FakeRouterLLM(
+            {
+                "route": "reviewer",
+                "reason": "content is complete enough for review",
+                "confidence": 0.91,
+                "fallback_required": False,
+            }
+        )
+    )
+
+    decision = router.decide(
+        last_node="content",
+        state={"deliverables": {"deliverables": {"summary": "ready"}}, "execution_profile": object()},
+    )
+
+    assert decision["next_node"] == "reviewer"
+    assert decision["decision_source"] == "model"
+    assert decision["model_route"] == "reviewer"
+    assert decision["final_route"] == "reviewer"
+    assert decision["confidence"] == 0.91
+    assert decision["used_fallback"] is False
+    assert decision["fallback_reason"] is None
+
+
+def test_router_falls_back_when_model_route_is_not_allowed() -> None:
+    router = RouterAgent(
+        llm_service=FakeRouterLLM(
+            {
+                "route": "archive_run",
+                "reason": "unsupported target",
+                "confidence": 0.95,
+                "fallback_required": False,
+            }
+        )
+    )
+
+    decision = router.decide(last_node="planner", state={"execution_profile": object()})
+
+    assert decision["next_node"] == "operator"
+    assert decision["decision_source"] == "rule"
+    assert decision["model_route"] == "archive_run"
+    assert decision["final_route"] == "operator"
+    assert decision["used_fallback"] is True
+    assert decision["fallback_reason"] == "route_not_allowed"
+
+
+def test_router_falls_back_when_model_confidence_is_low() -> None:
+    router = RouterAgent(
+        llm_service=FakeRouterLLM(
+            {
+                "route": "reviewer",
+                "reason": "maybe ready",
+                "confidence": 0.69,
+                "fallback_required": False,
+            }
+        )
+    )
+
+    decision = router.decide(last_node="analyst", state={"analysis": {"summary": "ok"}, "execution_profile": object()})
+
+    assert decision["next_node"] == "content"
+    assert decision["decision_source"] == "rule"
+    assert decision["model_route"] == "reviewer"
+    assert decision["confidence"] == 0.69
+    assert decision["used_fallback"] is True
+    assert decision["fallback_reason"] == "low_confidence"
+
+
+def test_router_falls_back_when_model_is_unavailable() -> None:
+    router = RouterAgent(llm_service=FakeRouterLLM(fail=True))
+
+    decision = router.decide(
+        last_node="content",
+        state={"deliverables": {}, "replan_count": 0, "execution_profile": object()},
+    )
+
+    assert decision["next_node"] == "planner"
+    assert decision["decision_source"] == "rule"
+    assert decision["model_route"] is None
+    assert decision["used_fallback"] is True
+    assert decision["fallback_reason"] == "model_error"
 
 
 def test_workflow_result_records_route_decisions() -> None:
@@ -179,6 +282,9 @@ def test_workflow_result_records_route_decisions() -> None:
 
     assert route_decisions[0]["from_node"] == "planner"
     assert route_decisions[0]["next_node"] == "operator"
+    assert route_decisions[0]["final_route"] == "operator"
+    assert "decision_source" in route_decisions[0]
+    assert "used_fallback" in route_decisions[0]
     assert any(item["next_node"] == "reviewer" for item in route_decisions)
 
 

@@ -9,6 +9,7 @@ from statistics import mean
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from pydantic import BaseModel, Field, ValidationError
 
 from app.config import Settings
 from app.data import RISK_CUSTOMERS, SALES_DATA, WORKFLOW_TEMPLATES
@@ -1035,8 +1036,42 @@ class ReviewerAgent:
         }
 
 
+class RouterDecision(BaseModel):
+    route: str
+    reason: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    fallback_required: bool = False
+
+
 class RouterAgent:
+    ALLOWED_ROUTES = {"planner", "operator", "analyst", "content", "reviewer", "complete_run", "handoff_run"}
+    MIN_CONFIDENCE = 0.7
+
+    def __init__(self, llm_service: LLMService | None = None) -> None:
+        self.llm_service = llm_service
+
     def decide(self, *, last_node: str, state: dict[str, Any]) -> dict[str, Any]:
+        rule_decision = self._rule_decision(last_node=last_node, state=state)
+        model_decision, fallback_reason = self._model_decision(
+            last_node=last_node,
+            state=state,
+            rule_decision=rule_decision,
+        )
+        if model_decision is not None and fallback_reason is None:
+            return self._build_audit_decision(
+                rule_decision=rule_decision,
+                model_decision=model_decision,
+                used_fallback=False,
+                fallback_reason=None,
+            )
+        return self._build_audit_decision(
+            rule_decision=rule_decision,
+            model_decision=model_decision,
+            used_fallback=True,
+            fallback_reason=fallback_reason or "llm_unavailable",
+        )
+
+    def _rule_decision(self, *, last_node: str, state: dict[str, Any]) -> dict[str, Any]:
         replan_count = int(state.get("replan_count", 0) or 0)
         next_node = "complete_run"
         reason = "workflow state is complete"
@@ -1073,6 +1108,106 @@ class RouterAgent:
             "next_node": next_node,
             "reason": reason,
             "replan_count": replan_count,
+        }
+
+    def _model_decision(
+        self,
+        *,
+        last_node: str,
+        state: dict[str, Any],
+        rule_decision: dict[str, Any],
+    ) -> tuple[RouterDecision | None, str | None]:
+        if self.llm_service is None or state.get("execution_profile") is None:
+            return None, "llm_unavailable"
+        fallback_payload = {
+            "route": rule_decision["next_node"],
+            "reason": rule_decision["reason"],
+            "confidence": 0.0,
+            "fallback_required": True,
+        }
+        try:
+            response = self.llm_service.generate_json(
+                route_target="router",
+                system_prompt=(
+                    "你是企业 AI 工作流中的 RouterAgent。"
+                    "请只返回 JSON，字段为 route、reason、confidence、fallback_required。"
+                    "route 只能从 planner、operator、analyst、content、reviewer、complete_run、handoff_run 中选择。"
+                    "如果信息不足或不确定，请设置 fallback_required=true。"
+                ),
+                user_prompt=json.dumps(self._router_context(last_node, state, rule_decision), ensure_ascii=False),
+                fallback=fallback_payload,
+                execution_profile=state["execution_profile"],
+                response_model=RouterDecision,
+            )
+        except Exception:
+            return None, "model_error"
+
+        call = getattr(response, "call", None)
+        if bool(getattr(call, "used_fallback", False)):
+            return None, str(getattr(call, "error", None) or getattr(call, "validation_error", None) or "model_fallback")
+
+        try:
+            model_decision = RouterDecision.model_validate(response.payload)
+        except ValidationError:
+            return None, "schema_validation_failed"
+
+        if model_decision.route not in self.ALLOWED_ROUTES:
+            return model_decision, "route_not_allowed"
+        if model_decision.confidence < self.MIN_CONFIDENCE:
+            return model_decision, "low_confidence"
+        if model_decision.fallback_required:
+            return model_decision, "fallback_required"
+        if model_decision.route == "planner" and int(state.get("replan_count", 0) or 0) >= 1:
+            return model_decision, "replan_limit_reached"
+        return model_decision, None
+
+    def _build_audit_decision(
+        self,
+        *,
+        rule_decision: dict[str, Any],
+        model_decision: RouterDecision | None,
+        used_fallback: bool,
+        fallback_reason: str | None,
+    ) -> dict[str, Any]:
+        model_route = model_decision.route if model_decision is not None else None
+        confidence = model_decision.confidence if model_decision is not None else None
+        final_route = rule_decision["next_node"] if used_fallback else model_decision.route
+        reason = rule_decision["reason"] if used_fallback else model_decision.reason
+        replan_count = int(rule_decision["replan_count"])
+        if not used_fallback and final_route == "planner":
+            replan_count += 1
+        return {
+            "from_node": rule_decision["from_node"],
+            "next_node": final_route,
+            "route": final_route,
+            "model_route": model_route,
+            "final_route": final_route,
+            "decision_source": "rule" if used_fallback else "model",
+            "confidence": confidence,
+            "used_fallback": used_fallback,
+            "fallback_reason": fallback_reason,
+            "reason": reason,
+            "replan_count": replan_count,
+        }
+
+    @staticmethod
+    def _router_context(last_node: str, state: dict[str, Any], rule_decision: dict[str, Any]) -> dict[str, Any]:
+        request = state.get("request")
+        workflow_type = getattr(getattr(request, "workflow_type", None), "value", None)
+        review = state.get("review", {})
+        deliverables = state.get("deliverables", {})
+        nested_deliverables = deliverables.get("deliverables", {}) if isinstance(deliverables, dict) else {}
+        return {
+            "last_node": last_node,
+            "workflow_type": workflow_type,
+            "replan_count": int(state.get("replan_count", 0) or 0),
+            "has_raw_result": bool(state.get("raw_result")),
+            "has_analysis": bool(state.get("analysis")),
+            "has_deliverables": not RouterAgent._missing_deliverables(deliverables),
+            "deliverable_keys": list(nested_deliverables.keys()) if isinstance(nested_deliverables, dict) else [],
+            "review_status": review.get("status") if isinstance(review, dict) else None,
+            "rule_route": rule_decision["next_node"],
+            "allowed_routes": sorted(RouterAgent.ALLOWED_ROUTES),
         }
 
     @staticmethod
@@ -1167,7 +1302,7 @@ class WorkflowEngine:
         self.analyst_agent = AnalystAgent(self.llm_service)
         self.content_agent = ContentAgent(self.llm_service)
         self.reviewer_agent = ReviewerAgent(self.llm_service)
-        self.router_agent = RouterAgent()
+        self.router_agent = RouterAgent(self.llm_service)
         self.feedback_service = FeedbackService(repository)
         self.graph = self._build_graph()
 
