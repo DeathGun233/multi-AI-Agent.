@@ -23,6 +23,7 @@ from app.models import (
     EvaluationRun,
     ExecutionProfile,
     FeedbackSample,
+    OperatorDecision,
     PromptProfile,
     PromptProfileForm,
     ReviewDecision,
@@ -64,6 +65,7 @@ class WorkflowState(TypedDict, total=False):
     correction_count: int
     route_decisions: list[dict[str, Any]]
     planning_context: dict[str, Any]
+    operator_context: dict[str, Any]
     analyst_context: dict[str, Any]
     content_context: dict[str, Any]
     reviewer_context: dict[str, Any]
@@ -600,17 +602,44 @@ class ToolCenter:
         self.external_data = external_data
 
     def run(self, workflow_type: WorkflowType, payload: dict[str, Any]) -> tuple[dict[str, Any], ToolCall]:
+        return self.run_named(self.default_tool_for(workflow_type, payload), payload)
+
+    def tool_choices_for(self, workflow_type: WorkflowType, payload: dict[str, Any]) -> list[dict[str, str]]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            result = self._sales_analytics(payload)
-            return result, ToolCall(name="sales_analytics_tool", input=payload, output=result)
+            return [{"name": "sales_analytics_tool", "description": "aggregate funnel and risk metrics"}]
         if workflow_type == WorkflowType.MARKETING_CAMPAIGN:
-            result = self._marketing_brief(payload)
-            return result, ToolCall(name="marketing_brief_tool", input=payload, output=result)
+            return [{"name": "marketing_brief_tool", "description": "prepare campaign brief and channel notes"}]
         if workflow_type == WorkflowType.SUPPORT_TRIAGE:
-            result, tool_name = self._support_triage(payload)
+            choices = [{"name": "support_triage_tool", "description": "classify tickets and escalation risk"}]
+            data_source = payload.get("data_source", {})
+            provider = data_source.get("provider") if isinstance(data_source, dict) else None
+            if provider:
+                choices.append({"name": f"{provider}_tool", "description": f"load support tickets from {provider}"})
+            return choices
+        return [{"name": "meeting_minutes_tool", "description": "extract action items from meeting notes"}]
+
+    def default_tool_for(self, workflow_type: WorkflowType, payload: dict[str, Any]) -> str:
+        choices = self.tool_choices_for(workflow_type, payload)
+        if workflow_type == WorkflowType.SUPPORT_TRIAGE:
+            for item in choices:
+                if item["name"] != "support_triage_tool":
+                    return item["name"]
+        return choices[0]["name"]
+
+    def run_named(self, tool_name: str, payload: dict[str, Any]) -> tuple[dict[str, Any], ToolCall]:
+        if tool_name == "sales_analytics_tool":
+            result = self._sales_analytics(payload)
             return result, ToolCall(name=tool_name, input=payload, output=result)
-        result = self._meeting_extract(payload)
-        return result, ToolCall(name="meeting_minutes_tool", input=payload, output=result)
+        if tool_name == "marketing_brief_tool":
+            result = self._marketing_brief(payload)
+            return result, ToolCall(name=tool_name, input=payload, output=result)
+        if tool_name in {"support_triage_tool", "github_issues_tool", "nyc_311_tool", "stack_overflow_tool", "hacker_news_tool"}:
+            result, actual_name = self._support_triage(payload)
+            return result, ToolCall(name=actual_name, input=payload, output=result)
+        if tool_name == "meeting_minutes_tool":
+            result = self._meeting_extract(payload)
+            return result, ToolCall(name=tool_name, input=payload, output=result)
+        raise ValueError(f"unknown tool: {tool_name}")
 
     def _sales_analytics(self, payload: dict[str, Any]) -> dict[str, Any]:
         region = payload.get("region")
@@ -818,6 +847,115 @@ class AnalystAgent:
                 "自动完成前复核截止时间是否清晰。",
             ],
         }
+
+
+class OperatorAgent:
+    MIN_CONFIDENCE = 0.7
+
+    def __init__(self, tool_center: ToolCenter, llm_service: LLMService | None = None) -> None:
+        self.tool_center = tool_center
+        self.llm_service = llm_service
+
+    def execute(
+        self,
+        *,
+        request: WorkflowRequest,
+        execution_profile: ExecutionProfile,
+    ) -> tuple[dict[str, Any], ToolCall, dict[str, Any], Any]:
+        choices = self.tool_center.tool_choices_for(request.workflow_type, request.input_payload)
+        default_tool = self.tool_center.default_tool_for(request.workflow_type, request.input_payload)
+        model_decision, fallback_reason, llm_call = self._select_tool(
+            request=request,
+            execution_profile=execution_profile,
+            choices=choices,
+            default_tool=default_tool,
+        )
+        if model_decision is not None and fallback_reason is None:
+            raw_result, tool_call = self.tool_center.run_named(model_decision.selected_tool, request.input_payload)
+            return raw_result, tool_call, {
+                "decision_source": "model",
+                "selected_tool": model_decision.selected_tool,
+                "executed_tool": tool_call.name,
+                "used_fallback": False,
+                "fallback_reason": None,
+                "tool_choices": [item["name"] for item in choices],
+                "decision_reason": model_decision.reason,
+                "confidence": model_decision.confidence,
+            }, llm_call
+
+        raw_result, tool_call = self.tool_center.run_named(default_tool, request.input_payload)
+        return raw_result, tool_call, {
+            "decision_source": "rule",
+            "selected_tool": model_decision.selected_tool if model_decision is not None else None,
+            "executed_tool": tool_call.name,
+            "used_fallback": True,
+            "fallback_reason": fallback_reason or "llm_unavailable",
+            "tool_choices": [item["name"] for item in choices],
+            "decision_reason": (
+                model_decision.reason if model_decision is not None else "use deterministic operator tool"
+            ),
+            "confidence": model_decision.confidence if model_decision is not None else None,
+        }, llm_call
+
+    def _select_tool(
+        self,
+        *,
+        request: WorkflowRequest,
+        execution_profile: ExecutionProfile,
+        choices: list[dict[str, str]],
+        default_tool: str,
+    ) -> tuple[OperatorDecision | None, str | None, Any]:
+        if self.llm_service is None:
+            return None, "llm_unavailable", None
+
+        fallback_payload = {
+            "selected_tool": default_tool,
+            "reason": "use deterministic operator tool",
+            "confidence": 0.0,
+            "fallback_required": True,
+        }
+        try:
+            response = self.llm_service.generate_json(
+                route_target="operator",
+                system_prompt=(
+                    "你是企业 AI 工作流中的 OperatorAgent。"
+                    "请严格返回 JSON，键为 selected_tool、reason、confidence、fallback_required。"
+                    "selected_tool 只能从给定的 allowed_tools 中选择。"
+                    "如果信息不足或不确定，请设置 fallback_required=true。"
+                ),
+                user_prompt=json.dumps(
+                    {
+                        "workflow_type": request.workflow_type.value,
+                        "input_payload": request.input_payload,
+                        "allowed_tools": choices,
+                        "default_tool": default_tool,
+                    },
+                    ensure_ascii=False,
+                ),
+                fallback=fallback_payload,
+                execution_profile=execution_profile,
+                response_model=OperatorDecision,
+            )
+        except Exception:
+            return None, "model_error", None
+
+        call = getattr(response, "call", None)
+        if bool(getattr(call, "used_fallback", False)):
+            return None, str(getattr(call, "error", None) or getattr(call, "validation_error", None) or "model_fallback"), call
+
+        try:
+            decision = OperatorDecision.model_validate(response.payload)
+        except ValidationError:
+            return None, "schema_validation_failed", call
+
+        allowed_tools = {item["name"] for item in choices}
+        if decision.selected_tool not in allowed_tools:
+            return decision, "tool_not_allowed", call
+        if decision.confidence < self.MIN_CONFIDENCE:
+            return decision, "low_confidence", call
+        if decision.fallback_required:
+            return decision, "fallback_required", call
+        return decision, None, call
 
 
 class ContentAgent:
@@ -1386,6 +1524,7 @@ class WorkflowEngine:
         self.tool_center = ToolCenter(self.external_data)
         self.llm_service = LLMService(settings)
         self.planner_agent = PlannerAgent(self.llm_service, self.planning_context_tool)
+        self.operator_agent = OperatorAgent(self.tool_center, self.llm_service)
         self.analyst_agent = AnalystAgent(self.llm_service)
         self.content_agent = ContentAgent(self.llm_service)
         self.reviewer_agent = ReviewerAgent(self.llm_service)
@@ -1564,9 +1703,18 @@ class WorkflowEngine:
         run = state["run"]
         request = state["request"]
         run.touch(status=RunStatus.EXECUTING, current_step="operator")
-        raw_result, tool_call = self.tool_center.run(request.workflow_type, request.input_payload)
-        run.add_log("OperatorAgent", f"已完成工具调用：{tool_call.name}。", tool_call=tool_call)
+        raw_result, tool_call, operator_context, llm_call = self.operator_agent.execute(
+            request=request,
+            execution_profile=state["execution_profile"],
+        )
+        run.add_log(
+            "OperatorAgent",
+            f"已执行工具：{tool_call.name}（source={operator_context['decision_source']}）。",
+            tool_call=tool_call,
+            llm_call=llm_call,
+        )
         state["raw_result"] = raw_result
+        state["operator_context"] = operator_context
         state["last_node"] = "operator"
         return state
 
@@ -1655,6 +1803,7 @@ class WorkflowEngine:
         run.result = {
             "execution_profile": state["execution_profile"].model_dump(mode="json"),
             "planning_context": state.get("planning_context", {}),
+            "operator_context": state.get("operator_context", {}),
             "analyst_context": state.get("analyst_context", {}),
             "content_context": state.get("content_context", {}),
             "reviewer_context": reviewer_context,
