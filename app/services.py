@@ -61,6 +61,7 @@ class WorkflowState(TypedDict, total=False):
     last_node: str
     next_node: str
     replan_count: int
+    correction_count: int
     route_decisions: list[dict[str, Any]]
     planning_context: dict[str, Any]
     analyst_context: dict[str, Any]
@@ -922,7 +923,10 @@ class ReviewerAgent:
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._rule_review(request.workflow_type, raw_result, analysis, deliverables)
         system_prompt = (
-            "你是企业 AI 工作流中的 ReviewerAgent。请严格返回 JSON，键为 status、needs_human_review、score、reasons，全部使用中文。"
+            "你是企业 AI 工作流中的 ReviewerAgent。请严格返回 JSON，键为 status、needs_human_review、"
+            "score、reasons、correction_target、correction_reason，全部使用中文。"
+            "当输出只需要回到 AnalystAgent 或 ContentAgent 修正时，correction_target 只能为 analyst 或 content；"
+            "不需要修正时 correction_target 为 null。"
         )
         user_prompt = (
             f"Prompt 方案要求：{prompt_profile.reviewer_instruction}\n"
@@ -977,16 +981,22 @@ class ReviewerAgent:
 
         if not reasons:
             reasons.append("结果结构完整，可直接流转执行。")
+        correction_target = None
+        correction_reason = None
         if not analysis or not deliverables:
             needs_human_review = True
             score = min(score, 0.5)
             reasons.append("核心分析或交付结果不完整，需要人工补充。")
+            correction_target = "analyst" if not analysis else "content"
+            correction_reason = "核心分析缺失，需要回到 AnalystAgent 补充。" if not analysis else "交付结果缺失，需要回到 ContentAgent 补充。"
         status = "waiting_human" if needs_human_review else "completed"
         return {
             "status": status,
             "needs_human_review": needs_human_review,
             "score": score,
             "reasons": reasons,
+            "correction_target": correction_target,
+            "correction_reason": correction_reason,
         }
 
     @staticmethod
@@ -1028,11 +1038,28 @@ class ReviewerAgent:
         score = float(model_review.get("score", rule_review.get("score", 0.8)))
         if status == "waiting_human":
             score = min(score, float(rule_review.get("score", score)))
+        rule_correction_target = rule_review.get("correction_target")
+        model_correction_target = model_review.get("correction_target")
+        if rule_correction_target in {"analyst", "content"}:
+            correction_target = rule_correction_target
+        elif bool(rule_review.get("needs_human_review", False)):
+            correction_target = None
+        else:
+            correction_target = model_correction_target
+        if correction_target not in {"analyst", "content"}:
+            correction_target = None
+        correction_reason = str(
+            rule_review.get("correction_reason")
+            if correction_target == rule_correction_target
+            else model_review.get("correction_reason") or ""
+        )
         return {
             "status": status,
             "needs_human_review": status == "waiting_human",
             "score": round(score, 2),
             "reasons": reasons,
+            "correction_target": correction_target,
+            "correction_reason": correction_reason or None,
         }
 
 
@@ -1046,12 +1073,20 @@ class RouterDecision(BaseModel):
 class RouterAgent:
     ALLOWED_ROUTES = {"planner", "operator", "analyst", "content", "reviewer", "complete_run", "handoff_run"}
     MIN_CONFIDENCE = 0.7
+    MAX_CORRECTIONS = 1
 
     def __init__(self, llm_service: LLMService | None = None) -> None:
         self.llm_service = llm_service
 
     def decide(self, *, last_node: str, state: dict[str, Any]) -> dict[str, Any]:
         rule_decision = self._rule_decision(last_node=last_node, state=state)
+        if rule_decision.get("force_rule_route"):
+            return self._build_audit_decision(
+                rule_decision=rule_decision,
+                model_decision=None,
+                used_fallback=True,
+                fallback_reason=rule_decision.get("fallback_reason"),
+            )
         model_decision, fallback_reason = self._model_decision(
             last_node=last_node,
             state=state,
@@ -1073,8 +1108,13 @@ class RouterAgent:
 
     def _rule_decision(self, *, last_node: str, state: dict[str, Any]) -> dict[str, Any]:
         replan_count = int(state.get("replan_count", 0) or 0)
+        correction_count = int(state.get("correction_count", 0) or 0)
         next_node = "complete_run"
         reason = "workflow state is complete"
+        correction_target = None
+        used_correction_loop = False
+        fallback_reason = None
+        force_rule_route = False
 
         if last_node == "planner":
             next_node = "operator"
@@ -1096,7 +1136,22 @@ class RouterAgent:
                 reason = "deliverables are ready for review"
         elif last_node == "reviewer":
             review = state.get("review", {})
-            if isinstance(review, dict) and review.get("status") == "waiting_human":
+            if isinstance(review, dict) and review.get("correction_target") in {"analyst", "content"}:
+                correction_target = str(review["correction_target"])
+                force_rule_route = True
+                if correction_count < self.MAX_CORRECTIONS and self._route_is_state_ready(correction_target, state):
+                    next_node = correction_target
+                    correction_count += 1
+                    used_correction_loop = True
+                    reason = str(
+                        review.get("correction_reason")
+                        or f"reviewer requested a corrective loop to {correction_target}"
+                    )
+                else:
+                    next_node = "handoff_run"
+                    fallback_reason = "correction_limit_reached"
+                    reason = "reviewer requested correction but the correction loop limit was reached"
+            elif isinstance(review, dict) and review.get("status") == "waiting_human":
                 next_node = "handoff_run"
                 reason = "review requires human handoff"
             else:
@@ -1108,6 +1163,11 @@ class RouterAgent:
             "next_node": next_node,
             "reason": reason,
             "replan_count": replan_count,
+            "correction_count": correction_count,
+            "correction_target": correction_target,
+            "used_correction_loop": used_correction_loop,
+            "fallback_reason": fallback_reason,
+            "force_rule_route": force_rule_route,
         }
 
     def _model_decision(
@@ -1178,6 +1238,7 @@ class RouterAgent:
         replan_count = int(rule_decision["replan_count"])
         if not used_fallback and final_route == "planner":
             replan_count += 1
+        fallback_reason = fallback_reason or rule_decision.get("fallback_reason")
         return {
             "from_node": rule_decision["from_node"],
             "next_node": final_route,
@@ -1190,6 +1251,9 @@ class RouterAgent:
             "fallback_reason": fallback_reason,
             "reason": reason,
             "replan_count": replan_count,
+            "correction_count": int(rule_decision.get("correction_count", 0) or 0),
+            "correction_target": rule_decision.get("correction_target"),
+            "used_correction_loop": bool(rule_decision.get("used_correction_loop", False)),
         }
 
     @staticmethod
@@ -1203,11 +1267,13 @@ class RouterAgent:
             "last_node": last_node,
             "workflow_type": workflow_type,
             "replan_count": int(state.get("replan_count", 0) or 0),
+            "correction_count": int(state.get("correction_count", 0) or 0),
             "has_raw_result": bool(state.get("raw_result")),
             "has_analysis": bool(state.get("analysis")),
             "has_deliverables": not RouterAgent._missing_deliverables(deliverables),
             "deliverable_keys": list(nested_deliverables.keys()) if isinstance(nested_deliverables, dict) else [],
             "review_status": review.get("status") if isinstance(review, dict) else None,
+            "review_correction_target": review.get("correction_target") if isinstance(review, dict) else None,
             "rule_route": rule_decision["next_node"],
             "allowed_routes": sorted(RouterAgent.ALLOWED_ROUTES),
         }
@@ -1378,6 +1444,7 @@ class WorkflowEngine:
             "execution_profile": execution_profile,
             "prompt_profile": prompt_profile,
             "replan_count": 0,
+            "correction_count": 0,
             "route_decisions": [],
             "persist": persist,
         }
@@ -1614,6 +1681,7 @@ class WorkflowEngine:
         decision = self.router_agent.decide(last_node=last_node, state=dict(state))
         state["next_node"] = str(decision["next_node"])
         state["replan_count"] = int(decision["replan_count"])
+        state["correction_count"] = int(decision.get("correction_count", state.get("correction_count", 0)) or 0)
         route_decisions = list(state.get("route_decisions", []))
         route_decisions.append(decision)
         state["route_decisions"] = route_decisions

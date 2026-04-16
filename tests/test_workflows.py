@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.db import UserAccountRecord
 from app.main import app, database, repository
-from app.models import RunStatus, WorkflowRun, WorkflowType
+from app.models import ReviewDecision, ReviewOutput, RunStatus, WorkflowRun, WorkflowType
 from app.services import ReviewerAgent, RouterAgent
 
 
@@ -300,6 +300,127 @@ def test_router_falls_back_when_model_is_unavailable() -> None:
     assert decision["model_route"] is None
     assert decision["used_fallback"] is True
     assert decision["fallback_reason"] == "model_error"
+
+
+def test_reviewer_output_can_request_content_correction() -> None:
+    review = ReviewOutput(
+        status="completed",
+        needs_human_review=False,
+        score=0.72,
+        reasons=["交付物缺少负责人和截止时间，需要补充内容。"],
+        correction_target="content",
+        correction_reason="补充负责人、截止时间和风险说明。",
+    )
+
+    assert review.correction_target == "content"
+    assert review.correction_reason == "补充负责人、截止时间和风险说明。"
+
+    decision = ReviewDecision(
+        status=RunStatus.COMPLETED,
+        needs_human_review=False,
+        score=review.score,
+        reasons=review.reasons,
+        correction_target=review.correction_target,
+        correction_reason=review.correction_reason,
+    )
+
+    assert decision.correction_target == "content"
+
+
+def test_reviewer_model_correction_does_not_override_rule_handoff() -> None:
+    merged = ReviewerAgent._merge_review(
+        {
+            "status": "waiting_human",
+            "needs_human_review": True,
+            "score": 0.6,
+            "reasons": ["疑似故障类工单必须进入人工接管。"],
+            "correction_target": None,
+            "correction_reason": None,
+        },
+        {
+            "status": "completed",
+            "needs_human_review": False,
+            "score": 0.85,
+            "reasons": ["可以先补充内容。"],
+            "correction_target": "content",
+            "correction_reason": "补充说明。",
+        },
+    )
+
+    assert merged["status"] == "waiting_human"
+    assert merged["needs_human_review"] is True
+    assert merged["correction_target"] is None
+
+
+def test_router_routes_reviewer_correction_to_content_once() -> None:
+    decision = RouterAgent().decide(
+        last_node="reviewer",
+        state={
+            "raw_result": {"items": [1]},
+            "analysis": {"summary": "ready"},
+            "deliverables": {"deliverables": {"summary": "missing owner"}},
+            "review": {
+                "status": "completed",
+                "needs_human_review": False,
+                "correction_target": "content",
+                "correction_reason": "补充负责人和截止时间。",
+            },
+            "correction_count": 0,
+        },
+    )
+
+    assert decision["next_node"] == "content"
+    assert decision["correction_count"] == 1
+    assert decision["correction_target"] == "content"
+    assert decision["used_correction_loop"] is True
+    assert "补充负责人和截止时间" in decision["reason"]
+
+
+def test_router_routes_reviewer_correction_to_analyst_once() -> None:
+    decision = RouterAgent().decide(
+        last_node="reviewer",
+        state={
+            "raw_result": {"items": [1]},
+            "analysis": {"summary": "thin analysis"},
+            "deliverables": {"deliverables": {"summary": "ready"}},
+            "review": {
+                "status": "completed",
+                "needs_human_review": False,
+                "correction_target": "analyst",
+                "correction_reason": "补充根因分析。",
+            },
+            "correction_count": 0,
+        },
+    )
+
+    assert decision["next_node"] == "analyst"
+    assert decision["correction_count"] == 1
+    assert decision["correction_target"] == "analyst"
+    assert decision["used_correction_loop"] is True
+
+
+def test_router_hands_off_when_reviewer_correction_limit_is_reached() -> None:
+    decision = RouterAgent().decide(
+        last_node="reviewer",
+        state={
+            "raw_result": {"items": [1]},
+            "analysis": {"summary": "ready"},
+            "deliverables": {"deliverables": {"summary": "still incomplete"}},
+            "review": {
+                "status": "completed",
+                "needs_human_review": False,
+                "correction_target": "content",
+                "correction_reason": "再次补充内容。",
+            },
+            "correction_count": 1,
+        },
+    )
+
+    assert decision["next_node"] == "handoff_run"
+    assert decision["correction_count"] == 1
+    assert decision["correction_target"] == "content"
+    assert decision["used_correction_loop"] is False
+    assert decision["fallback_reason"] == "correction_limit_reached"
 
 
 def test_workflow_result_records_route_decisions() -> None:

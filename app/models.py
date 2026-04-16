@@ -96,6 +96,8 @@ class ReviewDecision(BaseModel):
     needs_human_review: bool
     score: float
     reasons: list[str] = Field(default_factory=list)
+    correction_target: Literal["analyst", "content"] | None = None
+    correction_reason: str | None = None
 
 
 class WorkflowRequest(BaseModel):
@@ -311,6 +313,8 @@ class ReviewOutput(BaseModel):
     needs_human_review: bool
     score: float
     reasons: list[str]
+    correction_target: Literal["analyst", "content"] | None = None
+    correction_reason: str | None = None
 
     @field_validator("score")
     @classmethod
