@@ -349,6 +349,42 @@ def test_operator_uses_model_selected_tool_when_allowed() -> None:
     assert raw_result["lead_count"] > 0
 
 
+def test_operator_respects_model_selected_support_triage_tool_with_data_source() -> None:
+    class RejectingExternalData(ExternalDataService):
+        def load_support_tickets(self, source: dict) -> object:
+            raise AssertionError("external provider should not be called")
+
+    tool_center = ToolCenter(RejectingExternalData(Settings()))
+    operator = OperatorAgent(
+        llm_service=FakeOperatorLLM(
+            {
+                "selected_tool": "support_triage_tool",
+                "reason": "use local tickets from payload",
+                "confidence": 0.9,
+                "fallback_required": False,
+            }
+        ),
+        tool_center=tool_center,
+    )
+
+    raw_result, tool_call, operator_context, _ = operator.execute(
+        request=WorkflowRequest(
+            workflow_type=WorkflowType.SUPPORT_TRIAGE,
+            input_payload={
+                "tickets": [{"customer": "ACME", "message": "invoice question"}],
+                "data_source": {"provider": "github_issues"},
+            },
+        ),
+        execution_profile=object(),
+    )
+
+    assert tool_call.name == "support_triage_tool"
+    assert operator_context["decision_source"] == "model"
+    assert operator_context["selected_tool"] == "support_triage_tool"
+    assert operator_context["executed_tool"] == "support_triage_tool"
+    assert raw_result["tickets"][0]["customer"] == "ACME"
+
+
 def test_operator_falls_back_when_selected_tool_is_not_allowed() -> None:
     tool_center = ToolCenter(ExternalDataService(Settings()))
     operator = OperatorAgent(

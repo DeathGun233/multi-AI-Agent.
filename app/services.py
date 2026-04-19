@@ -633,8 +633,11 @@ class ToolCenter:
         if tool_name == "marketing_brief_tool":
             result = self._marketing_brief(payload)
             return result, ToolCall(name=tool_name, input=payload, output=result)
-        if tool_name in {"support_triage_tool", "github_issues_tool", "nyc_311_tool", "stack_overflow_tool", "hacker_news_tool"}:
-            result, actual_name = self._support_triage(payload)
+        if tool_name == "support_triage_tool":
+            result, actual_name = self._support_triage(payload, use_external_source=False)
+            return result, ToolCall(name=actual_name, input=payload, output=result)
+        if tool_name in {"github_issues_tool", "nyc_311_tool", "stack_overflow_tool", "hacker_news_tool"}:
+            result, actual_name = self._support_triage(payload, use_external_source=True)
             return result, ToolCall(name=actual_name, input=payload, output=result)
         if tool_name == "meeting_minutes_tool":
             result = self._meeting_extract(payload)
@@ -684,12 +687,12 @@ class ToolCenter:
             "channel_notes": {channel: f"为 {channel} 准备一个主卖点和一个行动号召" for channel in channels},
         }
 
-    def _support_triage(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    def _support_triage(self, payload: dict[str, Any], *, use_external_source: bool = True) -> tuple[dict[str, Any], str]:
         tickets = payload.get("tickets", [])
         data_source = payload.get("data_source")
         tool_name = "support_triage_tool"
         source_summary: dict[str, Any] = {}
-        if isinstance(data_source, dict) and data_source.get("provider"):
+        if use_external_source and isinstance(data_source, dict) and data_source.get("provider"):
             try:
                 batch = self.external_data.load_support_tickets(data_source)
                 tickets = batch.records
