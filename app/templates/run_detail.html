@@ -101,6 +101,45 @@
   {% endif %}
 </section>
 
+<section class="card" style="margin-top:18px;">
+  <div class="toolbar" style="justify-content:space-between;">
+    <h2 style="margin:0;">Operator Decision</h2>
+    {% if operator_context.present %}
+    <div class="toolbar">
+      <span class="badge">{{ operator_context.source }}</span>
+      {% if operator_context.used_fallback %}<span class="badge">FALLBACK</span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% if operator_context.present %}
+  <div class="grid two" style="margin-top:16px;">
+    <div class="card">
+      <div class="subtle">Selected Tool</div>
+      <div><strong>{{ operator_context.selected_tool }}</strong></div>
+      <div class="subtle" style="margin-top:8px;">confidence: {{ operator_context.confidence }}</div>
+    </div>
+    <div class="card">
+      <div class="subtle">Executed Tool</div>
+      <div><strong>{{ operator_context.executed_tool }}</strong></div>
+      <div class="subtle" style="margin-top:8px;">fallback: {{ "yes" if operator_context.used_fallback else "no" }}</div>
+    </div>
+  </div>
+  <div class="subtle" style="margin-top:12px;">
+    decision reason: {{ operator_context.decision_reason or "--" }}
+    {% if operator_context.fallback_reason %}/ fallback reason: {{ operator_context.fallback_reason }}{% endif %}
+  </div>
+  {% if operator_context.tool_choices %}
+  <div class="toolbar" style="margin-top:12px;">
+    {% for tool_name in operator_context.tool_choices %}
+    <span class="badge">{{ tool_name }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="subtle" style="margin-top:12px;">No operator context recorded (legacy run).</div>
+  {% endif %}
+</section>
+
 <div class="grid two" style="margin-top:18px;">
   <section class="card">
     <h2>执行日志</h2>

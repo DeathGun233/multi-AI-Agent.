@@ -5,9 +5,10 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.db import UserAccountRecord
+from app.external_data import ExternalDataService
 from app.main import app, database, repository
-from app.models import ReviewDecision, ReviewOutput, RunStatus, WorkflowRun, WorkflowType
-from app.services import ReviewerAgent, RouterAgent
+from app.models import ReviewDecision, ReviewOutput, RunStatus, WorkflowRequest, WorkflowRun, WorkflowType
+from app.services import OperatorAgent, ReviewerAgent, RouterAgent, ToolCenter
 
 
 client = TestClient(app)
@@ -21,6 +22,20 @@ class FakeRouterLLM:
     def generate_json(self, **_: object) -> SimpleNamespace:
         if self.fail:
             raise RuntimeError("router unavailable")
+        return SimpleNamespace(
+            payload=self.payload,
+            call=SimpleNamespace(used_fallback=False, error=None, validation_error=None),
+        )
+
+
+class FakeOperatorLLM:
+    def __init__(self, payload: dict | None = None, *, fail: bool = False) -> None:
+        self.payload = payload or {}
+        self.fail = fail
+
+    def generate_json(self, **_: object) -> SimpleNamespace:
+        if self.fail:
+            raise RuntimeError("operator unavailable")
         return SimpleNamespace(
             payload=self.payload,
             call=SimpleNamespace(used_fallback=False, error=None, validation_error=None),
@@ -169,13 +184,15 @@ def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
     assert body["result"]["execution_profile"]["prompt_profile"]["profile_id"] == "ops-deep-v1"
     assert body["result"]["execution_profile"]["routing_policy"]["policy_id"] == "balanced-router-v1"
     assert "planning_context" in body["result"]
+    assert "operator_context" in body["result"]
     assert "memory" in body["result"]["planning_context"]
+    assert body["result"]["operator_context"]["executed_tool"] == "sales_analytics_tool"
     planner_logs = [log for log in body["logs"] if log["agent"] == "PlannerAgent"]
     assert len(planner_logs) == 1
     assert planner_logs[0]["tool_call"]["name"] == "planning_context_tool"
     llm_logs = [log for log in body["logs"] if log.get("llm_call")]
-    assert len(llm_logs) == 4
-    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "analyst", "content", "reviewer"}
+    assert len(llm_logs) == 5
+    assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "operator", "analyst", "content", "reviewer"}
 
 
 def test_router_requests_one_replan_when_content_is_missing() -> None:
@@ -300,6 +317,148 @@ def test_router_falls_back_when_model_is_unavailable() -> None:
     assert decision["model_route"] is None
     assert decision["used_fallback"] is True
     assert decision["fallback_reason"] == "model_error"
+
+
+def test_operator_uses_model_selected_tool_when_allowed() -> None:
+    tool_center = ToolCenter(ExternalDataService(Settings()))
+    operator = OperatorAgent(
+        llm_service=FakeOperatorLLM(
+            {
+                "selected_tool": "sales_analytics_tool",
+                "reason": "need funnel metrics first",
+                "confidence": 0.93,
+                "fallback_required": False,
+            }
+        ),
+        tool_center=tool_center,
+    )
+
+    raw_result, tool_call, operator_context, llm_call = operator.execute(
+        request=WorkflowRequest(
+            workflow_type=WorkflowType.SALES_FOLLOWUP,
+            input_payload={"period": "2026-W13", "region": "华东"},
+        ),
+        execution_profile=object(),
+    )
+
+    assert tool_call.name == "sales_analytics_tool"
+    assert operator_context["decision_source"] == "model"
+    assert operator_context["executed_tool"] == "sales_analytics_tool"
+    assert operator_context["used_fallback"] is False
+    assert llm_call is not None
+    assert raw_result["lead_count"] > 0
+
+
+def test_operator_respects_model_selected_support_triage_tool_with_data_source() -> None:
+    class RejectingExternalData(ExternalDataService):
+        def load_support_tickets(self, source: dict) -> object:
+            raise AssertionError("external provider should not be called")
+
+    tool_center = ToolCenter(RejectingExternalData(Settings()))
+    operator = OperatorAgent(
+        llm_service=FakeOperatorLLM(
+            {
+                "selected_tool": "support_triage_tool",
+                "reason": "use local tickets from payload",
+                "confidence": 0.9,
+                "fallback_required": False,
+            }
+        ),
+        tool_center=tool_center,
+    )
+
+    raw_result, tool_call, operator_context, _ = operator.execute(
+        request=WorkflowRequest(
+            workflow_type=WorkflowType.SUPPORT_TRIAGE,
+            input_payload={
+                "tickets": [{"customer": "ACME", "message": "invoice question"}],
+                "data_source": {"provider": "github_issues"},
+            },
+        ),
+        execution_profile=object(),
+    )
+
+    assert tool_call.name == "support_triage_tool"
+    assert operator_context["decision_source"] == "model"
+    assert operator_context["selected_tool"] == "support_triage_tool"
+    assert operator_context["executed_tool"] == "support_triage_tool"
+    assert raw_result["tickets"][0]["customer"] == "ACME"
+
+
+def test_operator_falls_back_when_selected_tool_is_not_allowed() -> None:
+    tool_center = ToolCenter(ExternalDataService(Settings()))
+    operator = OperatorAgent(
+        llm_service=FakeOperatorLLM(
+            {
+                "selected_tool": "marketing_brief_tool",
+                "reason": "wrong tool",
+                "confidence": 0.95,
+                "fallback_required": False,
+            }
+        ),
+        tool_center=tool_center,
+    )
+
+    _, tool_call, operator_context, _ = operator.execute(
+        request=WorkflowRequest(
+            workflow_type=WorkflowType.SALES_FOLLOWUP,
+            input_payload={"period": "2026-W13"},
+        ),
+        execution_profile=object(),
+    )
+
+    assert tool_call.name == "sales_analytics_tool"
+    assert operator_context["decision_source"] == "rule"
+    assert operator_context["used_fallback"] is True
+    assert operator_context["fallback_reason"] == "tool_not_allowed"
+
+
+def test_operator_falls_back_when_confidence_is_low() -> None:
+    tool_center = ToolCenter(ExternalDataService(Settings()))
+    operator = OperatorAgent(
+        llm_service=FakeOperatorLLM(
+            {
+                "selected_tool": "sales_analytics_tool",
+                "reason": "not sure",
+                "confidence": 0.61,
+                "fallback_required": False,
+            }
+        ),
+        tool_center=tool_center,
+    )
+
+    _, tool_call, operator_context, _ = operator.execute(
+        request=WorkflowRequest(
+            workflow_type=WorkflowType.SALES_FOLLOWUP,
+            input_payload={"period": "2026-W13"},
+        ),
+        execution_profile=object(),
+    )
+
+    assert tool_call.name == "sales_analytics_tool"
+    assert operator_context["used_fallback"] is True
+    assert operator_context["fallback_reason"] == "low_confidence"
+
+
+def test_operator_falls_back_when_model_is_unavailable() -> None:
+    tool_center = ToolCenter(ExternalDataService(Settings()))
+    operator = OperatorAgent(
+        llm_service=FakeOperatorLLM(fail=True),
+        tool_center=tool_center,
+    )
+
+    _, tool_call, operator_context, llm_call = operator.execute(
+        request=WorkflowRequest(
+            workflow_type=WorkflowType.SALES_FOLLOWUP,
+            input_payload={"period": "2026-W13"},
+        ),
+        execution_profile=object(),
+    )
+
+    assert tool_call.name == "sales_analytics_tool"
+    assert operator_context["used_fallback"] is True
+    assert operator_context["fallback_reason"] == "model_error"
+    assert llm_call is None
 
 
 def test_reviewer_output_can_request_content_correction() -> None:
@@ -434,6 +593,14 @@ def test_workflow_result_records_route_decisions() -> None:
     assert "decision_source" in route_decisions[0]
     assert "used_fallback" in route_decisions[0]
     assert any(item["next_node"] == "reviewer" for item in route_decisions)
+
+
+def test_workflow_run_persists_operator_context() -> None:
+    body = create_sales_run()
+
+    assert "operator_context" in body["result"]
+    assert "executed_tool" in body["result"]["operator_context"]
+    assert "used_fallback" in body["result"]["operator_context"]
 
 
 def test_waiting_human_reasons_do_not_include_auto_execute_copy() -> None:
@@ -589,6 +756,58 @@ def test_run_detail_page_shows_route_trace_audit_fields_when_present() -> None:
     assert "模型建议：content" in detail.text
     assert "置信度：0.95" in detail.text
     assert "route_not_ready" in detail.text
+
+
+def test_run_detail_page_shows_operator_context_when_present() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.COMPLETED,
+        current_step="completed",
+        objective="Operator context fixture",
+        result={
+            "operator_context": {
+                "decision_source": "model",
+                "selected_tool": "sales_analytics_tool",
+                "executed_tool": "sales_analytics_tool",
+                "used_fallback": False,
+                "fallback_reason": None,
+                "tool_choices": ["sales_analytics_tool"],
+                "decision_reason": "need funnel metrics first",
+                "confidence": 0.93,
+            }
+        },
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "Operator Decision" in detail.text
+    assert "MODEL" in detail.text
+    assert "Selected Tool" in detail.text
+    assert "Executed Tool" in detail.text
+    assert "sales_analytics_tool" in detail.text
+    assert "need funnel metrics first" in detail.text
+    assert "0.93" in detail.text
+
+
+def test_run_detail_page_handles_missing_operator_context() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.COMPLETED,
+        current_step="completed",
+        objective="Legacy run without operator context",
+        result={"analysis": {"summary": "legacy result"}},
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "Operator Decision" in detail.text
+    assert "No operator context recorded (legacy run)." in detail.text
 
 
 def test_workflow_export_endpoint_supports_markdown_html_and_pdf() -> None:

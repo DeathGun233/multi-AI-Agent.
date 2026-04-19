@@ -100,6 +100,13 @@ class ReviewDecision(BaseModel):
     correction_reason: str | None = None
 
 
+class OperatorDecision(BaseModel):
+    selected_tool: str
+    reason: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    fallback_required: bool = False
+
+
 class WorkflowRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 

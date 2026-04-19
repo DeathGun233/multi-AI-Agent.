@@ -288,6 +288,37 @@ def _build_route_trace_sections(run: WorkflowRun) -> dict[str, object]:
     }
 
 
+def _build_operator_context_section(run: WorkflowRun) -> dict[str, object]:
+    if not isinstance(run.result, dict):
+        return {"present": False}
+
+    context = run.result.get("operator_context", {})
+    if not isinstance(context, dict) or not context:
+        return {"present": False}
+
+    confidence = context.get("confidence")
+    if isinstance(confidence, (int, float)):
+        confidence_display = f"{float(confidence):.2f}".rstrip("0").rstrip(".")
+    else:
+        confidence_display = "--"
+
+    tool_choices = context.get("tool_choices", [])
+    if not isinstance(tool_choices, list):
+        tool_choices = []
+
+    return {
+        "present": True,
+        "source": str(context.get("decision_source") or "rule").upper(),
+        "selected_tool": str(context.get("selected_tool") or "--"),
+        "executed_tool": str(context.get("executed_tool") or "--"),
+        "used_fallback": bool(context.get("used_fallback", False)),
+        "fallback_reason": str(context.get("fallback_reason") or ""),
+        "decision_reason": str(context.get("decision_reason") or ""),
+        "confidence": confidence_display,
+        "tool_choices": [str(item) for item in tool_choices if str(item).strip()],
+    }
+
+
 def _build_run_rows(runs: list[WorkflowRun]) -> list[dict]:
     titles = _workflow_titles()
     rows = []
@@ -610,6 +641,7 @@ def run_detail_page(run_id: str, request: Request):
             llm_summary=_build_llm_summary(run),
             runtime_memory_sections=_build_runtime_memory_sections(run),
             route_trace=_build_route_trace_sections(run),
+            operator_context=_build_operator_context_section(run),
             result_json=_pretty_json(run.result),
             graph=engine.graph_shape(),
         ),
