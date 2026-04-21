@@ -319,6 +319,49 @@ def _build_operator_context_section(run: WorkflowRun) -> dict[str, object]:
     }
 
 
+def _format_provenance_value(value: object) -> str:
+    if value is None or value == "":
+        return "--"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _build_data_provenance_section(run: WorkflowRun) -> dict[str, object]:
+    if not isinstance(run.result, dict):
+        return {"present": False}
+
+    raw_result = run.result.get("raw_result", {})
+    if not isinstance(raw_result, dict):
+        return {"present": False}
+
+    provenance_keys = {"data_status", "matched_rows", "source", "fallback_reason", "filters"}
+    if not any(key in raw_result for key in provenance_keys):
+        return {"present": False}
+
+    filters = raw_result.get("filters", {})
+    filter_rows: list[dict[str, str]] = []
+    if isinstance(filters, dict):
+        filter_rows = [
+            {"key": str(key), "value": _format_provenance_value(value)}
+            for key, value in filters.items()
+        ]
+    elif filters:
+        filter_rows = [{"key": "filters", "value": _format_provenance_value(filters)}]
+
+    data_status = str(raw_result.get("data_status") or "unknown")
+    return {
+        "present": True,
+        "data_status": data_status,
+        "matched_rows": _format_provenance_value(raw_result.get("matched_rows")),
+        "source": _format_provenance_value(raw_result.get("source")),
+        "fallback_reason": _format_provenance_value(raw_result.get("fallback_reason")),
+        "filters": filter_rows,
+        "message": str(raw_result.get("message") or ""),
+        "needs_attention": data_status in {"no_match", "fallback", "partial", "error"},
+    }
+
+
 def _build_run_rows(runs: list[WorkflowRun]) -> list[dict]:
     titles = _workflow_titles()
     rows = []
@@ -642,6 +685,7 @@ def run_detail_page(run_id: str, request: Request):
             runtime_memory_sections=_build_runtime_memory_sections(run),
             route_trace=_build_route_trace_sections(run),
             operator_context=_build_operator_context_section(run),
+            data_provenance=_build_data_provenance_section(run),
             result_json=_pretty_json(run.result),
             graph=engine.graph_shape(),
         ),

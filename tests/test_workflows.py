@@ -906,6 +906,69 @@ def test_run_detail_page_handles_missing_operator_context() -> None:
     assert "No operator context recorded (legacy run)." in detail.text
 
 
+def test_run_detail_page_shows_data_provenance_when_present() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.WAITING_HUMAN,
+        current_step="reviewer",
+        objective="No matching sales data fixture",
+        result={
+            "raw_result": {
+                "data_status": "no_match",
+                "matched_rows": 0,
+                "source": "demo_sales_data",
+                "fallback_reason": "no_sales_rows_matched_filters",
+                "filters": {
+                    "period": "2024",
+                    "region": "广东深圳",
+                    "sales_reps": ["阿文达", "DeathGun"],
+                },
+                "message": "未找到匹配销售数据，无法生成可信销售分析。",
+            }
+        },
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "Data Provenance" in detail.text
+    assert "NO TRUSTED DATA" in detail.text
+    assert "data_status" in detail.text
+    assert "no_match" in detail.text
+    assert "matched_rows" in detail.text
+    assert "0" in detail.text
+    assert "source" in detail.text
+    assert "demo_sales_data" in detail.text
+    assert "fallback_reason" in detail.text
+    assert "no_sales_rows_matched_filters" in detail.text
+    assert "filters" in detail.text
+    assert "广东深圳" in detail.text
+    assert "阿文达" in detail.text
+    assert "DeathGun" in detail.text
+    assert "未找到匹配销售数据" in detail.text
+
+
+def test_run_detail_page_handles_missing_data_provenance_for_legacy_run() -> None:
+    run = WorkflowRun(
+        workflow_type=WorkflowType.SALES_FOLLOWUP,
+        status=RunStatus.COMPLETED,
+        current_step="completed",
+        objective="Legacy run without data provenance",
+        result={"raw_result": {"lead_count": 12}},
+    )
+    repository.save(run)
+    login_as("viewer", "viewer123")
+
+    detail = client.get(f"/runs/{run.id}")
+
+    assert detail.status_code == 200
+    assert "Data Provenance" in detail.text
+    assert "No data provenance recorded (legacy run)." in detail.text
+    assert "JSON" in detail.text
+
+
 def test_workflow_export_endpoint_supports_markdown_html_and_pdf() -> None:
     created = create_sales_run()
     markdown = client.get(f"/runs/{created['id']}/export?format=markdown")

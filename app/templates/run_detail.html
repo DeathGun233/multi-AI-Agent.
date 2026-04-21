@@ -140,6 +140,51 @@
   {% endif %}
 </section>
 
+<section class="card" style="margin-top:18px;">
+  <div class="toolbar" style="justify-content:space-between;">
+    <h2 style="margin:0;">Data Provenance</h2>
+    {% if data_provenance.present %}
+    <div class="toolbar">
+      <span class="badge">data_status: {{ data_provenance.data_status }}</span>
+      {% if data_provenance.needs_attention %}<span class="badge">NO TRUSTED DATA</span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% if data_provenance.present %}
+  <div class="grid three" style="margin-top:16px;">
+    <div class="card">
+      <div class="subtle">matched_rows</div>
+      <div><strong>{{ data_provenance.matched_rows }}</strong></div>
+    </div>
+    <div class="card">
+      <div class="subtle">source</div>
+      <div><strong>{{ data_provenance.source }}</strong></div>
+    </div>
+    <div class="card">
+      <div class="subtle">fallback_reason</div>
+      <div><strong>{{ data_provenance.fallback_reason }}</strong></div>
+    </div>
+  </div>
+  {% if data_provenance.message %}
+  <div class="subtle" style="margin-top:12px;">{{ data_provenance.message }}</div>
+  {% endif %}
+  <div style="margin-top:12px;">
+    <strong>filters</strong>
+    {% if data_provenance.filters %}
+    <div class="stack" style="margin-top:10px;">
+      {% for row in data_provenance.filters %}
+      <div class="subtle">{{ row.key }}: {{ row.value }}</div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="subtle" style="margin-top:8px;">No filters recorded.</div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="subtle" style="margin-top:12px;">No data provenance recorded (legacy run).</div>
+  {% endif %}
+</section>
+
 <div class="grid two" style="margin-top:18px;">
   <section class="card">
     <h2>执行日志</h2>
