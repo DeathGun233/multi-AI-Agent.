@@ -8,7 +8,7 @@ from app.db import UserAccountRecord
 from app.external_data import ExternalDataService
 from app.main import app, database, repository
 from app.models import ReviewDecision, ReviewOutput, RunStatus, WorkflowRequest, WorkflowRun, WorkflowType
-from app.services import OperatorAgent, ReviewerAgent, RouterAgent, ToolCenter
+from app.services import AnalystAgent, OperatorAgent, ReviewerAgent, RouterAgent, ToolCenter
 
 
 client = TestClient(app)
@@ -193,6 +193,33 @@ def test_sales_workflow_runs_with_selected_model_prompt_and_routing() -> None:
     llm_logs = [log for log in body["logs"] if log.get("llm_call")]
     assert len(llm_logs) == 5
     assert {log["llm_call"]["route_target"] for log in llm_logs} == {"planner", "operator", "analyst", "content", "reviewer"}
+
+
+def test_sales_workflow_with_no_matching_data_does_not_claim_metrics() -> None:
+    login_as("operator", "operator123")
+    response = client.post(
+        "/api/workflows/run",
+        json={
+            "workflow_type": "sales_followup",
+            "input_payload": {
+                "focus_metric": "conversion_rate",
+                "period": "2024",
+                "region": "广东深圳",
+                "sales_reps": ["阿文达", "DeathGun"],
+            },
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "waiting_human"
+    assert body["result"]["raw_result"]["data_status"] == "no_match"
+    assert body["result"]["raw_result"]["matched_rows"] == 0
+    assert body["result"]["analysis"]["summary"] == "未找到匹配销售数据，无法生成可信销售分析。"
+    assert "转化率为" not in body["result"]["analysis"]["summary"]
+    assert body["result"]["deliverables"]["deliverables"]["data_gap"] == "未找到匹配销售数据"
+    assert body["review"]["needs_human_review"] is True
+    assert any("未找到匹配销售数据" in reason for reason in body["review"]["reasons"])
 
 
 def test_router_requests_one_replan_when_content_is_missing() -> None:
@@ -383,6 +410,75 @@ def test_operator_respects_model_selected_support_triage_tool_with_data_source()
     assert operator_context["selected_tool"] == "support_triage_tool"
     assert operator_context["executed_tool"] == "support_triage_tool"
     assert raw_result["tickets"][0]["customer"] == "ACME"
+
+
+def test_sales_tool_returns_no_match_instead_of_demo_rollup() -> None:
+    tool_center = ToolCenter(ExternalDataService(Settings()))
+
+    raw_result, tool_call = tool_center.run(
+        WorkflowType.SALES_FOLLOWUP,
+        {
+            "focus_metric": "conversion_rate",
+            "period": "2024",
+            "region": "广东深圳",
+            "sales_reps": ["阿文达", "DeathGun"],
+        },
+    )
+
+    assert tool_call.name == "sales_analytics_tool"
+    assert raw_result["data_status"] == "no_match"
+    assert raw_result["matched_rows"] == 0
+    assert raw_result["lead_count"] == 0
+    assert raw_result["deals"] == 0
+    assert raw_result["conversion_rate"] is None
+    assert raw_result["fallback_reason"] == "no_sales_rows_matched_filters"
+    assert raw_result["filters"]["region"] == "广东深圳"
+    assert raw_result["filters"]["sales_reps"] == ["阿文达", "DeathGun"]
+
+
+def test_sales_no_match_fallback_analysis_does_not_claim_metrics() -> None:
+    raw_result = {
+        "data_status": "no_match",
+        "matched_rows": 0,
+        "conversion_rate": None,
+        "avg_cycle_days": None,
+        "risk_customers": [],
+        "filters": {
+            "period": "2024",
+            "region": "广东深圳",
+            "sales_reps": ["阿文达", "DeathGun"],
+        },
+    }
+
+    analysis = AnalystAgent._fallback_analysis(WorkflowType.SALES_FOLLOWUP, raw_result)
+
+    assert "未找到匹配销售数据" in analysis["summary"]
+    assert "转化率为" not in analysis["summary"]
+    assert all("风险客户" not in item for item in analysis["insights"])
+    assert any("补充或校正销售数据" in item for item in analysis["action_plan"])
+
+
+def test_reviewer_requires_human_review_when_sales_data_is_missing() -> None:
+    review = ReviewerAgent._rule_review(
+        WorkflowType.SALES_FOLLOWUP,
+        {
+            "data_status": "no_match",
+            "matched_rows": 0,
+            "conversion_rate": None,
+            "filters": {
+                "period": "2024",
+                "region": "广东深圳",
+                "sales_reps": ["阿文达", "DeathGun"],
+            },
+        },
+        {"summary": "未找到匹配销售数据，无法生成可信分析。"},
+        {"deliverables": {"data_gap": "missing sales rows"}},
+    )
+
+    assert review["status"] == "waiting_human"
+    assert review["needs_human_review"] is True
+    assert review["score"] <= 0.5
+    assert any("未找到匹配销售数据" in reason for reason in review["reasons"])
 
 
 def test_operator_falls_back_when_selected_tool_is_not_allowed() -> None:

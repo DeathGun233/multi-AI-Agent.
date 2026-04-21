@@ -647,27 +647,54 @@ class ToolCenter:
     def _sales_analytics(self, payload: dict[str, Any]) -> dict[str, Any]:
         region = payload.get("region")
         reps = set(payload.get("sales_reps", []))
+        filters = {
+            "focus_metric": payload.get("focus_metric", "conversion_rate"),
+            "period": payload.get("period", "current"),
+            "region": region or "all",
+            "sales_reps": list(payload.get("sales_reps", [])),
+        }
         rows = [
             row for row in SALES_DATA
             if (not region or row["region"] == region) and (not reps or row["rep"] in reps)
         ]
         if not rows:
-            rows = SALES_DATA[:]
+            return {
+                "focus_metric": filters["focus_metric"],
+                "period": filters["period"],
+                "region": filters["region"],
+                "lead_count": 0,
+                "qualified_leads": 0,
+                "deals": 0,
+                "conversion_rate": None,
+                "avg_cycle_days": None,
+                "risk_customers": [],
+                "data_status": "no_match",
+                "matched_rows": 0,
+                "source": "demo_sales_data",
+                "filters": filters,
+                "fallback_reason": "no_sales_rows_matched_filters",
+                "message": "未找到匹配销售数据，无法生成可信销售分析。",
+            }
         lead_count = sum(item["leads"] for item in rows)
         qualified = sum(item["qualified"] for item in rows)
         deals = sum(item["deals"] for item in rows)
         avg_cycle_days = round(mean(item["avg_cycle_days"] for item in rows), 1)
         conversion_rate = round(deals / lead_count, 2) if lead_count else 0.0
         return {
-            "focus_metric": payload.get("focus_metric", "conversion_rate"),
-            "period": payload.get("period", "current"),
-            "region": region or "all",
+            "focus_metric": filters["focus_metric"],
+            "period": filters["period"],
+            "region": filters["region"],
             "lead_count": lead_count,
             "qualified_leads": qualified,
             "deals": deals,
             "conversion_rate": conversion_rate,
             "avg_cycle_days": avg_cycle_days,
             "risk_customers": [item for item in RISK_CUSTOMERS if not reps or item["owner"] in reps],
+            "data_status": "matched",
+            "matched_rows": len(rows),
+            "source": "demo_sales_data",
+            "filters": filters,
+            "fallback_reason": None,
         }
 
     @staticmethod
@@ -775,6 +802,8 @@ class AnalystAgent:
         prompt_profile: PromptProfile,
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._fallback_analysis(request.workflow_type, raw_result)
+        if request.workflow_type == WorkflowType.SALES_FOLLOWUP and raw_result.get("data_status") == "no_match":
+            return fallback, None
         system_prompt = (
             "你是企业 AI 工作流中的 AnalystAgent。请严格返回 JSON，键为 summary、insights、action_plan，全部使用中文。"
         )
@@ -801,6 +830,19 @@ class AnalystAgent:
     @staticmethod
     def _fallback_analysis(workflow_type: WorkflowType, raw_result: dict[str, Any]) -> dict[str, Any]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
+            if raw_result.get("data_status") == "no_match":
+                filters = raw_result.get("filters", {})
+                return {
+                    "summary": "未找到匹配销售数据，无法生成可信销售分析。",
+                    "insights": [
+                        f"请求条件未命中销售数据：{json.dumps(filters, ensure_ascii=False)}。",
+                        "当前结果不能作为区域、人员或周期维度的销售判断依据。",
+                    ],
+                    "action_plan": [
+                        "补充或校正销售数据后重新运行工作流。",
+                        "确认输入的区域、销售负责人和统计周期是否存在于数据源中。",
+                    ],
+                }
             risk_names = "、".join(item["name"] for item in raw_result.get("risk_customers", [])) or "暂无"
             return {
                 "summary": (
@@ -976,6 +1018,8 @@ class ContentAgent:
         prompt_profile: PromptProfile,
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._fallback_deliverables(request.workflow_type, raw_result, analysis)
+        if request.workflow_type == WorkflowType.SALES_FOLLOWUP and raw_result.get("data_status") == "no_match":
+            return fallback, None
         system_prompt = (
             "你是企业 AI 工作流中的 ContentAgent。请严格返回 JSON，键为 deliverables 和 manager_note，全部使用中文。"
         )
@@ -1006,18 +1050,26 @@ class ContentAgent:
         analysis: dict[str, Any],
     ) -> dict[str, Any]:
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            deliverables = {
-                "日报摘要": analysis.get("summary", ""),
-                "follow_up_plan": [
-                    {
-                        "客户": item["name"],
-                        "负责人": item["owner"],
-                        "下一步动作": item["next_action"],
-                    }
-                    for item in raw_result.get("risk_customers", [])
-                ],
-            }
-            manager_note = "需要管理者确认风险客户跟进节奏和较长销售周期的处理策略。"
+            if raw_result.get("data_status") == "no_match":
+                deliverables = {
+                    "data_gap": "未找到匹配销售数据",
+                    "requested_filters": raw_result.get("filters", {}),
+                    "follow_up_plan": [],
+                }
+                manager_note = "缺少匹配销售数据，不能生成跟进计划；请先补充或校正数据源。"
+            else:
+                deliverables = {
+                    "日报摘要": analysis.get("summary", ""),
+                    "follow_up_plan": [
+                        {
+                            "客户": item["name"],
+                            "负责人": item["owner"],
+                            "下一步动作": item["next_action"],
+                        }
+                        for item in raw_result.get("risk_customers", [])
+                    ],
+                }
+                manager_note = "需要管理者确认风险客户跟进节奏和较长销售周期的处理策略。"
         elif workflow_type == WorkflowType.MARKETING_CAMPAIGN:
             deliverables = {
                 "渠道内容资产": {
@@ -1063,6 +1115,8 @@ class ReviewerAgent:
         prompt_profile: PromptProfile,
     ) -> tuple[dict[str, Any], Any]:
         fallback = self._rule_review(request.workflow_type, raw_result, analysis, deliverables)
+        if request.workflow_type == WorkflowType.SALES_FOLLOWUP and raw_result.get("data_status") == "no_match":
+            return fallback, None
         system_prompt = (
             "你是企业 AI 工作流中的 ReviewerAgent。请严格返回 JSON，键为 status、needs_human_review、"
             "score、reasons、correction_target、correction_reason，全部使用中文。"
@@ -1099,7 +1153,11 @@ class ReviewerAgent:
         needs_human_review = False
         score = 0.88
         if workflow_type == WorkflowType.SALES_FOLLOWUP:
-            if raw_result.get("conversion_rate", 0) <= 0.15:
+            if raw_result.get("data_status") == "no_match":
+                needs_human_review = True
+                reasons.append("未找到匹配销售数据，当前结果不能作为业务决策依据。")
+                score = 0.4
+            elif raw_result.get("conversion_rate", 0) <= 0.15:
                 needs_human_review = True
                 reasons.append("当前转化率偏低，跟进策略需要管理者确认。")
                 score = 0.65
